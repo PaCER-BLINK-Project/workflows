@@ -24,15 +24,13 @@ OBSERVATIONS_ROOT_DIR=/scratch/mwavcs/msok/1276619416/combined #/group/director2
 WORK_DIR=${MYSCRATCH}/garrawarla-wsclean-workflow-obsid${OBSERVATION_ID}_${N_SECONDS}s
 
 # Include the MWA WSClean workflow functions
-. "${SCRIPT_DIR}/../lib/mwa-wsclean-workflow.sh"
+. "../lib/mwa-wsclean-workflow.sh"
 
 # Set Observation ID and GPS second to process
 START_GPSTIME=1276619418
 END_GPSTIME=$(expr $START_GPSTIME + $N_SECONDS - 1 )
 for CURRENT_GPSTIME in `seq $START_GPSTIME $END_GPSTIME`;
 do 
-echo $CURRENT_GPSTIME
-continue
 set_observation $OBSERVATION_ID $CURRENT_GPSTIME 
 download_metadata
 download_calibration_data
