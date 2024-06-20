@@ -1,26 +1,25 @@
 #!/bin/bash
-module use /pawsey/mwa/software/python3/modulefiles
-module use /scratch/director2183/cdipietrantonio/garrawarla/cotter/install/modulefiles
-module load cfitsio/4.3.1 cuda/11.4.2 cmake/3.24.3
 
-module load offline_correlator/v1.0.0
-module load wsclean/2.9
-module load cotter/devel
-module load python/3.8.2 astropy
+# Calling script needs to define the following variables 
+# - OBSERVATIONS_ROOT_DIR: path to the directory cotaining combined dat files, eg. #/scratch/mwavcs/msok/1276619416/combined
+# - WORK_DIR: top level working directory where output files are written, eg. ${MYSCRATCH}/test-old-pipeline
 
-
-OBSERVATIONS_ROOT_DIR=/scratch/mwavcs/msok/1276619416/combined #/group/director2183/cdipietrantonio/obs-data
-OBSERVATION_ID=1276619416
-OBS_GPSTIME=1276619418
-WORK_DIR=${MYSCRATCH}/test-old-pipeline
-
-
-CURRENT_SECOND_WORK_DIR="${WORK_DIR}/${OBSERVATION_ID}/${OBS_GPSTIME}"
-OBS_UNIX_TIMESTAMP=$((315964800 + ${OBS_GPSTIME} - 18))
-UTC_TIMESTAMP=`date -u +'%Y%m%d%H%M%S' -d@${OBS_UNIX_TIMESTAMP}`
 SCRIPT_DIR=$(cd $(dirname ${BASH_SOURCE[0]}) && pwd)
-METADATA_DIR="${WORK_DIR}/${OBSERVATION_ID}/metadata"
-CALIBRATION_DIR="${WORK_DIR}/${OBSERVATION_ID}/calibration_data"
+
+# set_observation
+# Description: set the observation ID and the GPS second to process.
+# Params:
+# - $1: Observation ID
+# - $2: GPS second
+function set_observation {
+    OBSERVATION_ID="$1"
+    OBS_GPSTIME="$2"
+    CURRENT_SECOND_WORK_DIR="${WORK_DIR}/${OBSERVATION_ID}/${OBS_GPSTIME}"
+    OBS_UNIX_TIMESTAMP=$((315964800 + ${OBS_GPSTIME} - 18))
+    UTC_TIMESTAMP=`date -u +'%Y%m%d%H%M%S' -d@${OBS_UNIX_TIMESTAMP}`
+    METADATA_DIR="${WORK_DIR}/${OBSERVATION_ID}/metadata"
+    CALIBRATION_DIR="${WORK_DIR}/${OBSERVATION_ID}/calibration_data"
+}
 
 
 function print_run {
@@ -66,7 +65,6 @@ function run_correlator {
     [ -d ${vis_dir} ] || mkdir -p ${vis_dir} 
     cd ${vis_dir}
     N_FITS=`ls -1 | grep -e fits | wc -l`
-    echo "N_FITS = $N_FITS"
     if [ $N_FITS -eq 24 ]; then
         echo "Skipping correlation... raw visibilities already exist."
         return 0
@@ -121,26 +119,18 @@ function run_cotter {
 
 function run_wsclean {
     img_dir="${CURRENT_SECOND_WORK_DIR}/images"
-    mkdir -p "${img_dir}"
-    cd "${img_dir}"
-    # Run wsclean
     imagesize=1024
     weighting=briggs
     pixscale=0.08
     n_iter=0
+    output_image_name="${OBSERVATION_ID}_${OBS_GPSTIME}_${imagesize}_${weighting}"
+    if [ -e ${img_dir}/${output_image_name}*dirty.fits ]; then
+        echo "Skipping run_wsclean... images already exist."
+        return 0
+    fi
+    mkdir -p "${img_dir}"
+    cd "${img_dir}"
     #  -use-idg -idg-mode gpu
-    print_run wsclean -name ${OBSERVATION_ID}_${OBS_GPSTIME}_${imagesize}_${weighting}  -j 6 -size ${imagesize} ${imagesize}  -pol i  -absmem 64 -weight ${weighting} 0 -scale $pixscale -niter ${n_iter} "${CURRENT_SECOND_WORK_DIR}/corrected_visibilities.ms" 
+    print_run wsclean -name ${output_image_name} -j 6 -size ${imagesize} ${imagesize}  -pol i  -absmem 64 -weight ${weighting} 0 -scale $pixscale -niter ${n_iter} "${CURRENT_SECOND_WORK_DIR}/corrected_visibilities.ms" 
 }
-
-# =========================================================================================
-#                                        MAIN SCRIPT
-# =========================================================================================
-
-
-download_metadata
-download_calibration_data
-fix_metadata 
-run_correlator
-run_cotter
-run_wsclean
 
