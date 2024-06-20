@@ -11,6 +11,11 @@ N_CPU_SOCKETS=`cat /proc/cpuinfo | grep "physical id"  | sort | uniq | wc -l`
 N_CORES_PER_SOCKET=`cat /proc/cpuinfo | grep "cpu cores" | head -n1 | grep -oE [0-9]+`
 NCORES=$(( N_CPU_SOCKETS * N_CORES_PER_SOCKET ))
 
+LAUNCHER=""
+if [ -z ${PAWSEY_CLUSTER+x} ]; then
+LAUNCHER="srun"
+fi
+
 # set_observation
 # Description: set the observation ID and the GPS second to process.
 # Params:
@@ -74,7 +79,7 @@ function run_correlator {
         echo "Skipping correlation... raw visibilities already exist."
         return 0
     fi
-    INPUT_DATA_FILES=${OBSERVATIONS_ROOT_DIR}/${OBSERVATION_ID}_${OBS_GPSTIME}_*
+    INPUT_DATA_FILES="${OBSERVATIONS_ROOT_DIR}/${OBSERVATION_ID}_${OBS_GPSTIME}_*.dat"
     # This will only work for coarse channels >= 133
     inverse_gpu_boxes=("24" "23" "22" "21" "20" "19" "18" "17" "16" "15" "14" "13" "12" "11" "10" "09" "08" "07" "06" "05" "04" "03" "02" "01")
     declare -i index
@@ -87,7 +92,7 @@ function run_correlator {
     GPUBOX_CHANNEL_NUMBER=${inverse_gpu_boxes[$index]}
     OUTPUT_PREFIX=$OBSERVATION_ID
     export obsid=${OBSERVATION_ID} 
-    srun  offline_correlator\
+    print_run ${LAUNCHER} offline_correlator\
        -d $input_file\
        -s $START_SECOND\
        -r $DUMPS_PER_SECOND\
@@ -116,7 +121,7 @@ function run_cotter {
     object="00h36m08.95s -10d34m00.3s"
     echo "Cotter started at" `date +"%s"`
 
-    print_run cotter  -j ${NCORES}  -timeres 1 -freqres 0.04 -edgewidth 80 -noflagautos -norfi -nostats -full-apply ${bin_file} -flagantenna 25,58,71,80,81,92,101,108,114,119,125 -m "${METADATA_DIR}/${UTC_TIMESTAMP}.metafits" -noflagmissings -allowmissing -offline-gpubox-format -initflag 0  -centre 18h33m41.89s -03d39m04.25s -o corrected_visibilities.ms ${RAW_VISIBILITIES}
+    print_run ${LAUNCHER} cotter  -j ${NCORES}  -timeres 1 -freqres 0.04 -edgewidth 80 -noflagautos -norfi -nostats -full-apply ${bin_file} -flagantenna 25,58,71,80,81,92,101,108,114,119,125 -m "${METADATA_DIR}/${UTC_TIMESTAMP}.metafits" -noflagmissings -allowmissing -offline-gpubox-format -initflag 0  -centre 18h33m41.89s -03d39m04.25s -o corrected_visibilities.ms ${RAW_VISIBILITIES}
 
     echo "Cotter ended at" `date +"%s"`
     cd -
@@ -136,6 +141,6 @@ function run_wsclean {
     mkdir -p "${img_dir}"
     cd "${img_dir}"
     #  -use-idg -idg-mode gpu
-    print_run wsclean -name ${output_image_name} -j ${NCORES} -size ${imagesize} ${imagesize}  -pol i  -absmem 64 -weight ${weighting} 0 -scale $pixscale -niter ${n_iter} "${CURRENT_SECOND_WORK_DIR}/corrected_visibilities.ms"
+    print_run ${LAUNCHER} wsclean -name ${output_image_name} -j ${NCORES} -size ${imagesize} ${imagesize}  -pol i  -absmem 64 -weight ${weighting} 0 -scale $pixscale -niter ${n_iter} "${CURRENT_SECOND_WORK_DIR}/corrected_visibilities.ms"
 }
 
