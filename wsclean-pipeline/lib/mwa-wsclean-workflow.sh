@@ -6,6 +6,11 @@
 
 SCRIPT_DIR=$(cd $(dirname ${BASH_SOURCE[0]}) && pwd)
 
+# Determining the number of CPU cores that can be used
+N_CPU_SOCKETS=`cat /proc/cpuinfo | grep "physical id"  | sort | uniq | wc -l`
+N_CORES_PER_SOCKET=`cat /proc/cpuinfo | grep "cpu cores" | head -n1 | grep -oE [0-9]+`
+NCORES=$(( N_CPU_SOCKETS * N_CORES_PER_SOCKET ))
+
 # set_observation
 # Description: set the observation ID and the GPS second to process.
 # Params:
@@ -111,7 +116,7 @@ function run_cotter {
     object="00h36m08.95s -10d34m00.3s"
     echo "Cotter started at" `date +"%s"`
 
-    print_run cotter  -j 40 -timeres 1 -freqres 0.04 -edgewidth 80 -noflagautos -norfi -nostats -full-apply ${bin_file} -flagantenna 25,58,71,80,81,92,101,108,114,119,125 -m "${METADATA_DIR}/${UTC_TIMESTAMP}.metafits" -noflagmissings -allowmissing -offline-gpubox-format -initflag 0  -centre 18h33m41.89s -03d39m04.25s -o corrected_visibilities.ms ${RAW_VISIBILITIES} 
+    print_run cotter  -j ${NCORES}  -timeres 1 -freqres 0.04 -edgewidth 80 -noflagautos -norfi -nostats -full-apply ${bin_file} -flagantenna 25,58,71,80,81,92,101,108,114,119,125 -m "${METADATA_DIR}/${UTC_TIMESTAMP}.metafits" -noflagmissings -allowmissing -offline-gpubox-format -initflag 0  -centre 18h33m41.89s -03d39m04.25s -o corrected_visibilities.ms ${RAW_VISIBILITIES}
 
     echo "Cotter ended at" `date +"%s"`
     cd -
@@ -131,6 +136,6 @@ function run_wsclean {
     mkdir -p "${img_dir}"
     cd "${img_dir}"
     #  -use-idg -idg-mode gpu
-    print_run wsclean -name ${output_image_name} -j 6 -size ${imagesize} ${imagesize}  -pol i  -absmem 64 -weight ${weighting} 0 -scale $pixscale -niter ${n_iter} "${CURRENT_SECOND_WORK_DIR}/corrected_visibilities.ms" 
+    print_run wsclean -name ${output_image_name} -j ${NCORES} -size ${imagesize} ${imagesize}  -pol i  -absmem 64 -weight ${weighting} 0 -scale $pixscale -niter ${n_iter} "${CURRENT_SECOND_WORK_DIR}/corrected_visibilities.ms"
 }
 
