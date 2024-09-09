@@ -65,6 +65,41 @@ function fix_metadata {
         echo "Skipping fix_metadata... new metadata file already exists."
         return 0
     fi
+## for drift scan observations :
+## azim=33.6901
+#azim=`fitshdr $metafits | grep AZIMUTH | awk '{idx=index($0,"=");print substr($0,idx+1);}' | awk '{print $1;}'`
+#fitshdr $metafits | grep AZIMUTH
+#if [[ -n "$4" && "$4" != "-" ]]; then
+#   azim=$4
+#fi
+#
+## alt=64.6934
+#alt=`fitshdr $metafits | grep ALTITUDE | awk '{idx=index($0,"=");print substr($0,idx+1);}' | awk '{print $1;}'`
+#fitshdr $metafits | grep ALTITUDE
+#if [[ -n "$5" && "$5" != "-" ]]; then
+#   alt=$5
+#fi
+#
+
+#      t_dtm=`echo $t | awk '{print substr($1,1,8)"_"substr($1,9);}'`
+#      t_dateobs=`echo $t | awk '{print substr($1,1,4)"-"substr($1,5,2)"-"substr($1,7,2)"T"substr($1,9,2)":"substr($1,11,2)":"substr($1,13,2);}'`
+#      t_ux=`date2date -ut2ux=${t_dtm} | awk '{print $3;}'`
+#      t_gps=`ux2gps! $t_ux`
+#
+#      echo "azh2radec $t_ux mwa $azim $alt"
+#      ra=`azh2radec $t_ux mwa $azim $alt | awk '{print $4;}'`
+#      dec=`azh2radec $t_ux mwa $azim $alt | awk '{print $6;}'`
+#   
+#      cp $metafits ${t}.metafits
+#      echo "python ${PYTHON_SCRIPTS_DIR}/fix_metafits_time_radec.py ${t}.metafits $t_dateobs $t_gps $ra $dec --n_channels=${n_channels}"
+#      python ${PYTHON_SCRIPTS_DIR}/fix_metafits_time_radec.py ${t}.metafits $t_dateobs $t_gps $ra $dec  --n_channels=${n_channels}
+#
+#
+#
+#
+#
+#
+
     print_run cp "${original_metadata}" "${new_metadata}"
     print_run python3 "${SCRIPT_DIR}/fix_metafits_time_radec.py" "${new_metadata}"
 }
@@ -129,7 +164,7 @@ function run_cotter {
 
 function run_wsclean {
     img_dir="${CURRENT_SECOND_WORK_DIR}/images"
-    imagesize=1024
+    imagesize=8192
     weighting=briggs
     pixscale=0.08
     n_iter=0

@@ -2,7 +2,7 @@
 
 # Loads all the needed software
 module use /pawsey/mwa/software/python3/modulefiles
-module use /scratch/director2183/cdipietrantonio/garrawarla/cotter/install/modulefiles
+module use /pawsey/mwa/software/centos7.6/cdipietrantonio/install/modulefiles
 module load cfitsio/4.3.1 cuda/11.4.2 cmake/3.24.3
 
 module load offline_correlator/v1.0.0
@@ -20,6 +20,7 @@ WORK_DIR=${MYSCRATCH}/test-old-pipeline
 # Set Observation ID and GPS second to process
 set_observation 1276619416 1276619418
 
+echo "1s pipeline started at" `date +"%s"`
 download_metadata
 download_calibration_data
 fix_metadata 
@@ -27,3 +28,4 @@ run_correlator
 run_cotter
 run_wsclean
 
+echo "1s pipeline ended at" `date +"%s"`
