@@ -65,6 +65,6 @@ if __name__ == '__main__':
    
    out_fitsname = f"{args['outdir']}/{utc_time}.metafits"
    print("Writing fits %s" % (out_fitsname))
-   fits.writeto(out_fitsname, overwrite=True) 
+   fits.writeto(out_fitsname, overwrite=True)
 
 

@@ -65,43 +65,7 @@ function fix_metadata {
         echo "Skipping fix_metadata... new metadata file already exists."
         return 0
     fi
-## for drift scan observations :
-## azim=33.6901
-#azim=`fitshdr $metafits | grep AZIMUTH | awk '{idx=index($0,"=");print substr($0,idx+1);}' | awk '{print $1;}'`
-#fitshdr $metafits | grep AZIMUTH
-#if [[ -n "$4" && "$4" != "-" ]]; then
-#   azim=$4
-#fi
-#
-## alt=64.6934
-#alt=`fitshdr $metafits | grep ALTITUDE | awk '{idx=index($0,"=");print substr($0,idx+1);}' | awk '{print $1;}'`
-#fitshdr $metafits | grep ALTITUDE
-#if [[ -n "$5" && "$5" != "-" ]]; then
-#   alt=$5
-#fi
-#
-
-#      t_dtm=`echo $t | awk '{print substr($1,1,8)"_"substr($1,9);}'`
-#      t_dateobs=`echo $t | awk '{print substr($1,1,4)"-"substr($1,5,2)"-"substr($1,7,2)"T"substr($1,9,2)":"substr($1,11,2)":"substr($1,13,2);}'`
-#      t_ux=`date2date -ut2ux=${t_dtm} | awk '{print $3;}'`
-#      t_gps=`ux2gps! $t_ux`
-#
-#      echo "azh2radec $t_ux mwa $azim $alt"
-#      ra=`azh2radec $t_ux mwa $azim $alt | awk '{print $4;}'`
-#      dec=`azh2radec $t_ux mwa $azim $alt | awk '{print $6;}'`
-#   
-#      cp $metafits ${t}.metafits
-#      echo "python ${PYTHON_SCRIPTS_DIR}/fix_metafits_time_radec.py ${t}.metafits $t_dateobs $t_gps $ra $dec --n_channels=${n_channels}"
-#      python ${PYTHON_SCRIPTS_DIR}/fix_metafits_time_radec.py ${t}.metafits $t_dateobs $t_gps $ra $dec  --n_channels=${n_channels}
-#
-#
-#
-#
-#
-#
-
-    print_run cp "${original_metadata}" "${new_metadata}"
-    print_run python3 "${SCRIPT_DIR}/fix_metafits_time_radec.py" "${new_metadata}"
+    print_run python3 "${SCRIPT_DIR}/fix_metafits_time_radec.py" -t 1 -c 768 -i 1 -g ${OBS_GPSTIME} -o ${METADATA_DIR} "${original_metadata}"
 }
 
 
@@ -155,27 +119,49 @@ function run_cotter {
     # Run contter
     object="00h36m08.95s -10d34m00.3s"
     echo "Cotter started at" `date +"%s"`
-
-    print_run ${LAUNCHER} cotter  -j ${NCORES}  -timeres 1 -freqres 0.04 -edgewidth 80 -noflagautos -norfi -nostats -full-apply ${bin_file} -flagantenna 25,58,71,80,81,92,101,108,114,119,125 -m "${METADATA_DIR}/${UTC_TIMESTAMP}.metafits" -noflagmissings -allowmissing -offline-gpubox-format -initflag 0  -centre 18h33m41.89s -03d39m04.25s -o corrected_visibilities.ms ${RAW_VISIBILITIES}
+     # -centre 18h33m41.89s -03d39m04.25 -edgewidth=80
+    print_run ${LAUNCHER} cotter  -j ${NCORES}  -timeres 1 -freqres 0.04 -edgewidth 0 -noflagautos -norfi -nostats -full-apply ${bin_file} -flagantenna 25,58,71,80,81,92,101,108,114,119,125 -m "${METADATA_DIR}/${UTC_TIMESTAMP}.metafits" -noflagmissings -allowmissing -offline-gpubox-format -initflag 0   -o corrected_visibilities.ms ${RAW_VISIBILITIES}
 
     echo "Cotter ended at" `date +"%s"`
     cd -
 }
 
+function run_birli {
+    if [ -e "${CURRENT_SECOND_WORK_DIR}/corrected_visibilities.ms" ]; then
+        echo "Skipping cotter because corrected visibilities already exist."
+        return 0
+    fi
+    cd "$CURRENT_SECOND_WORK_DIR/"
+    # Offline correlator vis
+    RAW_VISIBILITIES="${CURRENT_SECOND_WORK_DIR}/raw_visibilities/*.fits"
+    bin_file=`ls ${CALIBRATION_DIR}/*.bin`
+    
+    # Run contter
+    object="00h36m08.95s -10d34m00.3s"
+    echo "Birli started at" `date +"%s"`
+# --phase-centre 18h33m41.89s -03d39m04.25s
+    print_run ${LAUNCHER} birli --avg-time-res 1 --avg-freq-res 40 --flag-edge-width 80  --no-rfi --apply-di-cal  ${bin_file} --flag-antennas 25,58,71,80,81,92,101,108,114,119,125 -m "${METADATA_DIR}/${UTC_TIMESTAMP}.metafits"  --flag-init 0   --ms-out corrected_visibilities.ms ${RAW_VISIBILITIES}
+
+    echo "Birli ended at" `date +"%s"`
+    cd -
+}
+
+# run_wsclean <image_size> <pix_scale> <weighting>
 function run_wsclean {
     img_dir="${CURRENT_SECOND_WORK_DIR}/images"
-    imagesize=8192
-    weighting=briggs
-    pixscale=0.08
+    imagesize="$1"
+    weighting="$3"
+    pixscale="$2"
     n_iter=0
-    output_image_name="${OBSERVATION_ID}_${OBS_GPSTIME}_${imagesize}_${weighting}"
+    channels_out="-channels-out 768"
+    output_image_name="${OBSERVATION_ID}_${OBS_GPSTIME}_${imagesize}"
     if [ -e ${img_dir}/${output_image_name}*dirty.fits ]; then
         echo "Skipping run_wsclean... images already exist."
         return 0
     fi
     mkdir -p "${img_dir}"
     cd "${img_dir}"
-    #  -use-idg -idg-mode gpu
-    print_run ${LAUNCHER} wsclean -name ${output_image_name} -j ${NCORES} -size ${imagesize} ${imagesize}  -pol i  -absmem 64 -weight ${weighting} 0 -scale $pixscale -niter ${n_iter} "${CURRENT_SECOND_WORK_DIR}/corrected_visibilities.ms"
+    print_run ${LAUNCHER} wsclean -name ${output_image_name} -j ${NCORES} -size ${imagesize} ${imagesize}  -pol i -use-idg -idg-mode gpu -weight ${weighting} -nwlayers 1 -scale $pixscale -niter ${n_iter} ${channels_out} "${CURRENT_SECOND_WORK_DIR}/corrected_visibilities.ms"
+
 }
 
