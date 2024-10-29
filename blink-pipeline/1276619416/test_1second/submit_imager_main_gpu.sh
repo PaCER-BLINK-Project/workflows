@@ -26,8 +26,8 @@ INPUT_FILES="${INPUT_DIR}/1276619416_1276619418_ch*.dat"
 METAFITS="$BLINK_TEST_DATADIR/mwa/1276619416/20200619163000.metafits"
 SOL_FILE=${BLINK_TEST_DATADIR}/mwa/1276619416/1276625432.bin
 
-OUTPUT_DIR=${MYSCRATCH}/1276619416_1276619418_images_gpu_main
-blink_pipeline -c 4 -C -1 -t 1.00s -o ${OUTPUT_DIR} -n 8192 -f -1 -F 30 -M ${METAFITS} -U 1592584240 -w N -v -1 -r -L -G -s ${SOL_FILE} -b 0  -r -V 1 -A 21,25,58,71,80,81,92,101,108,114,119,125 ${INPUT_FILES} 
+OUTPUT_DIR=${MYSCRATCH}/1276619416_1276619418_images_gpu_main_debug
+blink_pipeline -c 4 -C -1 -t 1.00s -o ${OUTPUT_DIR} -n 8192 -f -1 -F 30 -M ${METAFITS} -U 1592584240 -w N -v 100 -r -L -G -s ${SOL_FILE} -b 0  -r -V 100 -A 21,25,58,71,80,81,92,101,108,114,119,125 ${INPUT_FILES} 
 
 cd ${OUTPUT_DIR}
 find . -name "*test_image_time000000_ch*_real.fits" > fits_list_all
