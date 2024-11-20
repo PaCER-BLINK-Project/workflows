@@ -2,12 +2,12 @@
 
 module load msfitslib/master-rmfufbl
 
-OUTPUT_DIR=${MYSCRATCH}/1276619416_1276619418_4096_images_gpu_orig
+OUTPUT_DIR=${MYSCRATCH}/1276619416_1276619418_images_cristian_dev_debug
 cd ${OUTPUT_DIR}
 find . -name "*test_image_time000000_ch*_real.fits" > fits_list_all
 while read filename
 do
-calcfits_bg $filename = "../1276619416_1276619418_4096_images_gpu_main_updated/$filename" 
+calcfits_bg $filename = "../1276619416_1276619418_images_gpu_main/$filename" 
 done < fits_list_all > comparison_out.txt
 num_images=`wc -l fits_list_all | cut -f1 -d' '`
 found_equal=`grep -ce "Images are EQUAL" comparison_out.txt`
