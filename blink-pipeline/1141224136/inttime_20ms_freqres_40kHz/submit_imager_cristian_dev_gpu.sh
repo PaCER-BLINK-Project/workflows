@@ -14,7 +14,7 @@ module use /software/projects/director2183/cdipietrantonio/setonix/2024.05/modul
 module load msfitslib/master-rmfufbl blink-pipeline-gpu/cristian-dev
 
 INPUT_DIR=/scratch/mwavcs/msok/1141224136/combined
-INPUT_FILES="${INPUT_DIR}/1141224136_1141224143_ch*.dat"
+INPUT_FILES="${INPUT_DIR}/1141224136_*_ch*.dat"
 METAFITS=/scratch/director2183/cdipietrantonio/1141224136/1141224136.metafits
 SOL_FILE=/scratch/director2183/cdipietrantonio/1141224136/1141222488.bin 
 
