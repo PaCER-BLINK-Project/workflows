@@ -12,9 +12,12 @@ N_CORES_PER_SOCKET=`cat /proc/cpuinfo | grep "cpu cores" | head -n1 | grep -oE [
 NCORES=$(( N_CPU_SOCKETS * N_CORES_PER_SOCKET ))
 
 LAUNCHER=""
-if [ -z ${PAWSEY_CLUSTER+x} ]; then
-LAUNCHER="srun"
+if ! [ -z ${PAWSEY_CLUSTER+x} ]; then
+echo "Using Pawsey cluster ${PAWSEY_CLUSTER}"
+LAUNCHER="srun -c $SLURM_CPUS_PER_TASK"
 fi
+
+PERF="perf record -g --call-graph dwarf -F 9000"
 
 # set_observation
 # Description: set the observation ID and the GPS second to process.
@@ -31,6 +34,19 @@ function set_observation {
     CALIBRATION_DIR="${WORK_DIR}/${OBSERVATION_ID}/calibration_data"
 }
 
+function set_time_resolution {
+    resolution="$1"
+    if [ "$resolution" = "1s" ]; then
+        DUMPS_PER_SECOND=1
+        COTTER_TIMERES=1
+    elif [ "$resolution" = "50ms" ]; then
+        DUMPS_PER_SECOND=20
+        COTTER_TIMERES=0.05
+    else
+        echo "run_correlator error: expected a time resolution as parameter."
+        exit 1
+    fi
+}
 
 function print_run {
  echo "$@"
@@ -65,10 +81,10 @@ function fix_metadata {
         echo "Skipping fix_metadata... new metadata file already exists."
         return 0
     fi
-    print_run python3 "${SCRIPT_DIR}/fix_metafits_time_radec.py" -t 1 -c 768 -i 1 -g ${OBS_GPSTIME} -o ${METADATA_DIR} "${original_metadata}"
+    print_run python3 "${SCRIPT_DIR}/fix_metafits_time_radec.py" -t ${DUMPS_PER_SECOND} -c 768 -i ${COTTER_TIMERES} -g ${OBS_GPSTIME} -o ${METADATA_DIR} "${original_metadata}"
 }
 
-
+# run_correlator <timeres>
 function run_correlator {
     vis_dir="${CURRENT_SECOND_WORK_DIR}/raw_visibilities"
     [ -d ${vis_dir} ] || mkdir -p ${vis_dir} 
@@ -84,9 +100,9 @@ function run_correlator {
     declare -i index
     index=0
     echo "Offline correlator started at" `date +"%s"`
+    p_start_time=`date +%s`
     for input_file in `ls -1 ${INPUT_DATA_FILES} | sort`; do
     START_SECOND=${OBS_UNIX_TIMESTAMP}
-    DUMPS_PER_SECOND=1
     CHANS_TO_AVERAGE=4
     GPUBOX_CHANNEL_NUMBER=${inverse_gpu_boxes[$index]}
     OUTPUT_PREFIX=$OBSERVATION_ID
@@ -101,9 +117,10 @@ function run_correlator {
     
     (( index=index + 1 ))
     done
-    echo "Offline correlator ended at" `date +"%s"`
-    
- cd - 
+    p_end_time=`date +%s`
+    p_elapsed=$((p_end_time-p_start_time))
+    echo "Offline correlator took $p_elapsed seconds."
+    cd - 
 }
 
 function run_cotter {
@@ -119,10 +136,12 @@ function run_cotter {
     # Run contter
     object="00h36m08.95s -10d34m00.3s"
     echo "Cotter started at" `date +"%s"`
+    p_start_time=`date +%s`
      # -centre 18h33m41.89s -03d39m04.25 -edgewidth=80
-    print_run ${LAUNCHER} cotter  -j ${NCORES}  -timeres 1 -freqres 0.04 -edgewidth 0 -noflagautos -norfi -nostats -full-apply ${bin_file} -flagantenna 25,58,71,80,81,92,101,108,114,119,125 -m "${METADATA_DIR}/${UTC_TIMESTAMP}.metafits" -noflagmissings -allowmissing -offline-gpubox-format -initflag 0   -o corrected_visibilities.ms ${RAW_VISIBILITIES}
-
-    echo "Cotter ended at" `date +"%s"`
+    print_run ${LAUNCHER} cotter  -j ${NCORES}  -timeres ${COTTER_TIMERES} -freqres 0.04 -edgewidth 0 -noflagautos -norfi -nostats -full-apply ${bin_file} -flagantenna 25,58,71,80,81,92,101,108,114,119,125 -m "${METADATA_DIR}/${UTC_TIMESTAMP}.metafits" -noflagmissings -allowmissing -offline-gpubox-format -initflag 0   -o corrected_visibilities.ms ${RAW_VISIBILITIES}
+    p_end_time=`date +%s`
+    p_elapsed=$((p_end_time-p_start_time))
+    echo "Cotter took $p_elapsed seconds."
     cd -
 }
 
@@ -135,14 +154,15 @@ function run_birli {
     # Offline correlator vis
     RAW_VISIBILITIES="${CURRENT_SECOND_WORK_DIR}/raw_visibilities/*.fits"
     bin_file=`ls ${CALIBRATION_DIR}/*.bin`
-    
     # Run contter
     object="00h36m08.95s -10d34m00.3s"
+    p_start_time=`date +%s`
     echo "Birli started at" `date +"%s"`
-# --phase-centre 18h33m41.89s -03d39m04.25s
-    print_run ${LAUNCHER} birli --avg-time-res 1 --avg-freq-res 40 --flag-edge-width 80  --no-rfi --apply-di-cal  ${bin_file} --flag-antennas 25,58,71,80,81,92,101,108,114,119,125 -m "${METADATA_DIR}/${UTC_TIMESTAMP}.metafits"  --flag-init 0   --ms-out corrected_visibilities.ms ${RAW_VISIBILITIES}
-
-    echo "Birli ended at" `date +"%s"`
+    # --phase-centre 18h33m41.89s -03d39m04.25s
+    print_run ${LAUNCHER} birli --avg-time-res ${COTTER_TIMERES} --avg-freq-res 0.04  --flag-edge-width 0  --no-rfi --apply-di-cal  ${bin_file} --flag-antennas 25,58,71,80,81,92,101,108,114,119,125 -m "${METADATA_DIR}/${UTC_TIMESTAMP}.metafits"  --flag-init 0   --ms-out corrected_visibilities.ms ${RAW_VISIBILITIES}
+    p_end_time=`date +%s`
+    p_elapsed=$((p_end_time-p_start_time))
+    echo "Birli took $p_elapsed seconds."
     cd -
 }
 
@@ -153,15 +173,22 @@ function run_wsclean {
     weighting="$3"
     pixscale="$2"
     n_iter=0
-    channels_out="-channels-out 768"
-    output_image_name="${OBSERVATION_ID}_${OBS_GPSTIME}_${imagesize}"
+    channels_out="" #"-channels-out 768"
+    iout=1 #${DUMPS_PER_SECOND}
+    gridder="idg -idg-mode gpu"
+    # gridder="wgridder"
+    output_image_name="${OBSERVATION_ID}_${OBS_GPSTIME}_${imagesize}_${pixscale}_idg"
     if [ -e ${img_dir}/${output_image_name}*dirty.fits ]; then
         echo "Skipping run_wsclean... images already exist."
         return 0
     fi
     mkdir -p "${img_dir}"
     cd "${img_dir}"
-    print_run ${LAUNCHER} wsclean -name ${output_image_name} -j ${NCORES} -size ${imagesize} ${imagesize}  -pol i -use-idg -idg-mode gpu -weight ${weighting} -nwlayers 1 -scale $pixscale -niter ${n_iter} ${channels_out} "${CURRENT_SECOND_WORK_DIR}/corrected_visibilities.ms"
-
+    p_start_time=`date +%s`
+    print_run ${LAUNCHER} wsclean -name ${output_image_name} -j ${NCORES} -size ${imagesize} ${imagesize}  -pol i -intervals-out ${iout} -use-idg -idg-mode gpu   -weight ${weighting} -nwlayers 1 -scale $pixscale -niter ${n_iter} ${channels_out} "${CURRENT_SECOND_WORK_DIR}/corrected_visibilities.ms" 
+    # print_run ${LAUNCHER} wsclean -name ${output_image_name} -j ${NCORES} -size ${imagesize} ${imagesize}  -pol i -intervals-out ${iout} -gridder wgridder  -weight ${weighting} -scale $pixscale -niter ${n_iter} ${channels_out} "${CURRENT_SECOND_WORK_DIR}/corrected_visibilities.ms" 
+    p_end_time=`date +%s`
+    p_elapsed=$((p_end_time-p_start_time))
+    echo "WSClean took $p_elapsed seconds."
 }
 

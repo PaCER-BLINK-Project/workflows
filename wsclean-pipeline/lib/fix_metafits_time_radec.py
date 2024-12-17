@@ -41,7 +41,7 @@ if __name__ == '__main__':
    parser = argparse.ArgumentParser(prog='fix_metadata.py', description='Updates the metadata file to match the current second of MWA observation.') 
    parser.add_argument('-c','--n_channels','--n_chans', dest="n_channels",default=768, help="Number of channels [default %default]", type=int)
    parser.add_argument('-t','--n_scans','--n_timesteps', dest="n_timesteps",default=1, help="Number of timesteps [default %default]", type=int)
-   parser.add_argument('-i','--inttime','--inttime_sec', dest="inttime",default=4, help="Integration time in seconds [default %default]", type=int)
+   parser.add_argument('-i','--inttime','--inttime_sec', dest="inttime",default=4, help="Integration time in seconds [default %default]", type=float)
    parser.add_argument('-g','--gpstime', dest="gpstime", required=True, help="GPS time of current second being processed.", type=int)
    parser.add_argument('-o','--outdir', dest="outdir", help="Output directory where to save the new metafits.", default=".", type=str)
    parser.add_argument('metafits', metavar='metafits', type=str, nargs=1)

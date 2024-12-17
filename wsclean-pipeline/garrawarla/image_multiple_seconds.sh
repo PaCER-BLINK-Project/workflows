@@ -6,36 +6,23 @@
 #SBATCH --cpus-per-task=30
 #SBATCH --time=04:00:00
 
-# Loads all the needed software
-module use /pawsey/mwa/software/python3/modulefiles
-module use /scratch/director2183/cdipietrantonio/garrawarla/cotter/install/modulefiles
-module load cfitsio/4.3.1 cuda/11.4.2 cmake/3.24.3
 
-module load offline_correlator/v1.0.0
-module load wsclean/2.9
-module load cotter/devel
-module load python/3.8.2 astropy
+export OBSERVATION_ID=1276619416
+export TIME_RESOLUTION="1s"
 
-N_SECONDS=60
-OBSERVATION_ID=1276619416
-
-SCRIPT_DIR=$(cd $(dirname ${BASH_SOURCE[0]}) && pwd)
-OBSERVATIONS_ROOT_DIR=/scratch/mwavcs/msok/1276619416/combined #/group/director2183/cdipietrantonio/obs-data
-WORK_DIR=${MYSCRATCH}/garrawarla-wsclean-workflow-obsid${OBSERVATION_ID}_${N_SECONDS}s
-
-# Include the MWA WSClean workflow functions
-. "../lib/mwa-wsclean-workflow.sh"
-
+N_SECONDS=4600
+N_SECONDS_PER_BATCH=100
 # Set Observation ID and GPS second to process
 START_GPSTIME=1276619418
-END_GPSTIME=$(expr $START_GPSTIME + $N_SECONDS - 1 )
-for CURRENT_GPSTIME in `seq $START_GPSTIME $END_GPSTIME`;
+LAST_GPSTIME=$(expr $START_GPSTIME + $N_SECONDS - 1 )
+while ((START_GPSTIME < LAST_GPSTIME ));
 do 
-set_observation $OBSERVATION_ID $CURRENT_GPSTIME 
-download_metadata
-download_calibration_data
-fix_metadata 
-run_correlator
-run_cotter
-run_wsclean
+END_GPSTIME=$((START_GPSTIME + N_SECONDS_PER_BATCH - 1))
+if [ $END_GPSTIME -gt $LAST_GPSTIME ]; then
+END_GPSTIME=$LAST_GPSTIME
+fi
+export START_GPSTIME
+export END_GPSTIME
+sbatch --export=ALL ./image_one_second.sh
+START_GPSTIME=$((START_GPSTIME + N_SECONDS_PER_BATCH))
 done
