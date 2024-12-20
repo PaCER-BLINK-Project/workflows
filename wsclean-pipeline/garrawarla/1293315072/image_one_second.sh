@@ -12,13 +12,15 @@ module use /pawsey/mwa/software/centos7.6/cdipietrantonio/install/modulefiles
 source /pawsey/mwa/software/centos7.6/cdipietrantonio/setup.sh
 
 # Include the MWA WSClean workflow functions
-. "../lib/mwa-wsclean-workflow.sh"
+. "lib/mwa-wsclean-workflow.sh"
 
 
-TIME_RESOLUTION=${TIME_RESOLUTION:-"1s"}
+TIME_RESOLUTION=${TIME_RESOLUTION:-"20ms"}
 
 if [ "${TIME_RESOLUTION}" = "50ms" ]; then
 module load offline_correlator/50ms
+elif [ "${TIME_RESOLUTION}" = "20ms" ]; then
+module load offline_correlator/20ms
 else
 module load offline_correlator/v1.0.0
 fi
@@ -31,12 +33,12 @@ module load python/3.8.2 astropy
 
 set_time_resolution ${TIME_RESOLUTION}
 
-OBSERVATION_ID=${OBSERVATION_ID:-1276619416}
-OBSERVATIONS_ROOT_DIR=/scratch/director2183/cdipietrantonio/${OBSERVATION_ID}/combined
-WORK_DIR=/scratch/director2183/cdipietrantonio/garrawarla-wsclean-workflow-natural-obsid1276619416_timing2
+OBSERVATION_ID=${OBSERVATION_ID:-1293315072}
+OBSERVATIONS_ROOT_DIR=/scratch/mwavcs/msok/1293315072/combined #/scratch/director2183/cdipietrantonio/${OBSERVATION_ID}/combined
+WORK_DIR=/scratch/director2183/cdipietrantonio/garrawarla-wsclean-workflow-natural-obsid1293315072_20ms_method2
 
 # Set Observation ID and GPS second to process
-START_GPSTIME=${START_GPSTIME:-1276619418}
+START_GPSTIME=${START_GPSTIME:-1293315075}
 END_GPSTIME=${END_GPSTIME:-${START_GPSTIME}}
 
 for CURRENT_GPSTIME in `seq $START_GPSTIME $END_GPSTIME`;
@@ -49,5 +51,5 @@ download_calibration_data
 fix_metadata 
 run_correlator
 run_cotter
-run_wsclean 8192 0.006 "natural"
+run_wsclean 1200 0.006 "natural"
 done

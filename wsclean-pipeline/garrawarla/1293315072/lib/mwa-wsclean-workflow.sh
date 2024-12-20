@@ -176,11 +176,10 @@ function run_wsclean {
     weighting="$3"
     pixscale="$2"
     n_iter=0
-    channels_out= #"-channels-out 768"
-    iout=1 #${DUMPS_PER_SECOND}
+    channels_out="-channels-out 768"
+    iout=${DUMPS_PER_SECOND}
     gridder="idg -idg-mode gpu"
     # gridder="wgridder"
-    output_image_name="${OBSERVATION_ID}_${OBS_GPSTIME}_${imagesize}_${pixscale}_idg"
     if [ -e ${img_dir}/${output_image_name}*dirty.fits ]; then
         echo "Skipping run_wsclean... images already exist."
         return 0
@@ -188,8 +187,14 @@ function run_wsclean {
     mkdir -p "${img_dir}"
     cd "${img_dir}"
     p_start_time=`date +%s`
-    print_run ${LAUNCHER} wsclean -name ${output_image_name} -j ${NCORES} -size ${imagesize} ${imagesize}  -pol i -intervals-out ${iout} -use-idg -idg-mode gpu   -weight ${weighting} -nwlayers 1 -scale $pixscale -niter ${n_iter} ${channels_out} "${CURRENT_SECOND_WORK_DIR}/corrected_visibilities.ms" 
-    # print_run ${LAUNCHER} wsclean -name ${output_image_name} -j ${NCORES} -size ${imagesize} ${imagesize}  -pol i -intervals-out ${iout} -gridder wgridder  -weight ${weighting} -scale $pixscale -niter ${n_iter} ${channels_out} "${CURRENT_SECOND_WORK_DIR}/corrected_visibilities.ms" 
+    for int_id in `seq 0 $((DUMPS_PER_SECOND - 1))`;
+    do
+    for ch_id in `seq 0 767`;
+    do
+    output_image_name="${OBSERVATION_ID}_${OBS_GPSTIME}_int${int_id}_ch${ch_id}_${imagesize}_${pixscale}_idg"
+    print_run ${LAUNCHER} wsclean -name ${output_image_name} -j ${NCORES} -channel-range ${ch_id} $((ch_id + 1)) -interval $int_id $((int_id + 1))  -size ${imagesize} ${imagesize}  -pol i  -use-idg -idg-mode gpu   -weight ${weighting} -nwlayers 1 -scale $pixscale -niter ${n_iter} "${CURRENT_SECOND_WORK_DIR}/corrected_visibilities.ms" 
+   done
+   done 
     p_end_time=`date +%s`
     p_elapsed=$((p_end_time-p_start_time))
     echo "WSClean took $p_elapsed seconds."
