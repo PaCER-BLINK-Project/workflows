@@ -11,14 +11,14 @@ function print_run {
 	$@
 }
 module use /software/projects/director2183/cdipietrantonio/setonix/2024.05/modules/zen3/gcc/12.2.0
-module load msfitslib/master-rmfufbl blink-pipeline-gpu/cristian-dev
+module load msfitslib/master-ddop32m blink-pipeline-gpu/cristian-dev
 
 INPUT_DIR=/scratch/mwavcs/msok/1141224136/combined
-INPUT_FILES="${INPUT_DIR}/1141224136_1141224143_ch*.dat"
+INPUT_FILES="${INPUT_DIR}/1141224136_1141224143_ch133.dat"
 METAFITS=/scratch/director2183/cdipietrantonio/1141224136/1141224136.metafits
 SOL_FILE=/scratch/director2183/cdipietrantonio/1141224136/1141222488.bin 
 
-OUTPUT_DIR=${MYSCRATCH}/1141224136_300sec_int1s_noimag
+OUTPUT_DIR=${MYSCRATCH}/1141224136_test_c2c
 
 print_run  `which blink_pipeline` -u -c 4 -C -1 -t 1.00s -o ${OUTPUT_DIR} -n 2048 -F 30 -M ${METAFITS}  -w N -v 100 -r -L -G -s ${SOL_FILE} -b 0  -r -V 1  ${INPUT_FILES} 
 

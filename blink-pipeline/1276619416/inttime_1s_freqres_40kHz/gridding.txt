@@ -1,0 +1,7 @@
+slurm-20793843.out:gridding_kernel             24    9.505522           0.396063     0.21397406920449147 
+slurm-20793860.out:gridding_kernel             24    9.484969           0.395207     0.21521491889360575  
+slurm-20793861.out:gridding_kernel             24    9.493323           0.395555     0.21483201353088324 
+slurm-20793862.out:gridding_kernel             24    9.466727           0.394446     0.2148703829394553  
+slurm-20793863.out:gridding_kernel             24    9.486296           0.395262     0.2153385851713088  
+slurm-20793866.out:gridding_kernel             24    9.52582            0.396909     0.2157391089957405  
+slurm-20793868.out:gridding_kernel             24    9.536167           0.39734      0.21633456792404743 

@@ -1,0 +1,74 @@
+Reading voltages took 6.2642 seconds.
+Cross correlation took 1.24106 seconds.
+gpufftPlanMany took 3083.58ms
+gpufftExecC2C took 139.276ms
+Saving image took 27.2122 seconds.
+Cross correlation took 0.244935 seconds.
+gpufftExecC2C took 139.193ms
+Saving image took 29.5972 seconds.
+Cross correlation took 0.244876 seconds.
+gpufftExecC2C took 139.22ms
+Saving image took 26.7888 seconds.
+Cross correlation took 0.244899 seconds.
+gpufftExecC2C took 139.302ms
+Saving image took 29.4374 seconds.
+Cross correlation took 0.248672 seconds.
+gpufftExecC2C took 144.379ms
+Saving image took 26.6034 seconds.
+Cross correlation took 0.24506 seconds.
+gpufftExecC2C took 139.302ms
+Saving image took 26.3958 seconds.
+Cross correlation took 0.244639 seconds.
+gpufftExecC2C took 139.354ms
+Saving image took 27.7917 seconds.
+Cross correlation took 0.246648 seconds.
+gpufftExecC2C took 143.753ms
+Saving image took 28.0647 seconds.
+Cross correlation took 0.246933 seconds.
+gpufftExecC2C took 143.938ms
+Saving image took 26.6799 seconds.
+Cross correlation took 0.244924 seconds.
+gpufftExecC2C took 139.204ms
+Saving image took 27.6718 seconds.
+Cross correlation took 0.249891 seconds.
+gpufftExecC2C took 143.791ms
+Saving image took 28.8894 seconds.
+Cross correlation took 0.25107 seconds.
+gpufftExecC2C took 139.413ms
+Saving image took 27.337 seconds.
+Cross correlation took 0.24491 seconds.
+gpufftExecC2C took 139.512ms
+Saving image took 30.1839 seconds.
+Cross correlation took 0.247367 seconds.
+gpufftExecC2C took 143.896ms
+Saving image took 31.4531 seconds.
+Cross correlation took 0.248779 seconds.
+gpufftExecC2C took 144.595ms
+Saving image took 119.005 seconds.
+Cross correlation took 0.248813 seconds.
+gpufftExecC2C took 144.443ms
+Saving image took 30.9474 seconds.
+Cross correlation took 0.247134 seconds.
+gpufftExecC2C took 143.889ms
+Saving image took 26.7791 seconds.
+Cross correlation took 0.244943 seconds.
+gpufftExecC2C took 139.245ms
+Saving image took 26.3165 seconds.
+Cross correlation took 0.245327 seconds.
+gpufftExecC2C took 139.011ms
+Saving image took 67.6529 seconds.
+Cross correlation took 0.246831 seconds.
+gpufftExecC2C took 139.939ms
+Saving image took 28.8462 seconds.
+Cross correlation took 0.244864 seconds.
+gpufftExecC2C took 139.342ms
+Saving image took 27.2703 seconds.
+Cross correlation took 0.245048 seconds.
+gpufftExecC2C took 139.228ms
+Saving image took 28.2498 seconds.
+Cross correlation took 0.244872 seconds.
+gpufftExecC2C took 139.141ms
+Saving image took 27.2513 seconds.
+Cross correlation took 0.244895 seconds.
+gpufftExecC2C took 139.299ms
+Saving image took 30.3003 seconds.

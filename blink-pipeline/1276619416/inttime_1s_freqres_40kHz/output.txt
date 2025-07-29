@@ -1,0 +1,40 @@
+Direct transform: 0 25.000000 0.000000
+Direct transform: 1 0.000000 0.000000
+Direct transform: 2 0.000000 0.000000
+Direct transform: 3 0.000000 0.000000
+Direct transform: 4 0.000000 0.000000
+Direct transform: 5 0.000000 0.000000
+Direct transform: 6 0.000000 0.000000
+Direct transform: 7 0.000000 0.000000
+Direct transform: 8 0.000000 0.000000
+Direct transform: 9 0.000000 0.000000
+Direct transform: 10 0.000000 0.000000
+Direct transform: 11 0.000000 0.000000
+Direct transform: 12 0.000000 0.000000
+Direct transform: 13 0.000000 0.000000
+Direct transform: 14 0.000000 0.000000
+Inverse transform: 0 25.000000 
+Inverse transform: 1 25.000000 
+Inverse transform: 2 25.000000 
+Inverse transform: 3 25.000000 
+Inverse transform: 4 25.000000 
+Inverse transform: 5 25.000000 
+Inverse transform: 6 25.000000 
+Inverse transform: 7 25.000000 
+Inverse transform: 8 25.000000 
+Inverse transform: 9 25.000000 
+Inverse transform: 10 25.000000 
+Inverse transform: 11 25.000000 
+Inverse transform: 12 25.000000 
+Inverse transform: 13 25.000000 
+Inverse transform: 14 25.000000 
+Inverse transform: 15 25.000000 
+Inverse transform: 16 25.000000 
+Inverse transform: 17 25.000000 
+Inverse transform: 18 25.000000 
+Inverse transform: 19 25.000000 
+Inverse transform: 20 25.000000 
+Inverse transform: 21 25.000000 
+Inverse transform: 22 25.000000 
+Inverse transform: 23 25.000000 
+Inverse transform: 24 25.000000 

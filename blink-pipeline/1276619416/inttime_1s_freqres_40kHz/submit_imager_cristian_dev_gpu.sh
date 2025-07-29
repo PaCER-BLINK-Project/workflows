@@ -13,9 +13,9 @@ function print_run {
 }
 
 module load rclone/1.63.1
-module load msfitslib/master-rmfufbl blink-pipeline-gpu/cristian-dev
-#INPUT_DIR=/scratch/mwavcs/msok/1276619416/combined # ${MYSCRATCH}/obs-1276619416
-INPUT_DIR=/scratch/director2183/cdipietrantonio/1276619416/combined_flash
+module load msfitslib/master-ddop32m  blink-pipeline-gpu/cristian-dev
+# module load rocm/6.3.2
+INPUT_DIR=/scratch/$PAWSEY_PROJECT/cdipietrantonio/1276619416/combined
 #module list
 #[ -e ${INPUT_DIR}/combined.tar.gz ] || rclone copy cdipietrantonio:obs-1276619416/combined.tar.gz ${INPUT_DIR}
 #cd $INPUT_DIR
@@ -23,23 +23,23 @@ INPUT_DIR=/scratch/director2183/cdipietrantonio/1276619416/combined_flash
 #cd - 
 # Create a test directory, so test files do no pollute the build directory. 
 
-INPUT_FILES="${INPUT_DIR}/1276619416_*_ch*.dat"
-METAFITS=/scratch/director2183/cdipietrantonio/test-old-pipeline/1276619416/metadata/1276619416.metafits #"$BLINK_TEST_DATADIR/mwa/1276619416/20200619163000.metafits"
+INPUT_FILES="${INPUT_DIR}/1276619416_12766194*_ch*.dat"
+METAFITS=/scratch/$PAWSEY_PROJECT/cdipietrantonio/1276619416/1276619416.metafits
 SOL_FILE=${BLINK_TEST_DATADIR}/mwa/1276619416/1276625432.bin
 
-OUTPUT_DIR=/nvme/1276619416_all_seconds
+OUTPUT_DIR=$MYSCRATCH/test_newcal #c2cdump
 PERF="perf record -g -F 9000"
 PYROCPROF=/software/projects/pawsey0001/cdipietrantonio/development/utils/apps/pyrocprof.py 
 # module load arm-forge/24.0.3
 export FORGE_DEBUG_SRUN_ARGS="%jobid% --gres=none -I -W0 --gpus=0 --overlap --distribution=cyclic"
-
+module list
 ldd `which blink_pipeline`
+p_start_time=`date +%s`
 #$PERF  `which blink_pipeline` -c 4 -C -1 -t 1s -o ${OUTPUT_DIR} -n 8192 -f -1 -F 30 -M ${METAFITS} -U 1592584240 -w N -v 100 -r -L -G -s ${SOL_FILE} -b 0  -r -V 1 -A 21,25,58,71,80,81,92,101,108,114,119,125 ${INPUT_FILES} 
-print_run `which blink_pipeline` -c 4 -C -1 -t 1.00s -o ${OUTPUT_DIR} -n 8192  -f -1 -F 30 -M ${METAFITS} -U 1592584240 -w N -v 100 -r -L -G -s ${SOL_FILE} -b 0  -r -V 1 -A 21,25,58,71,80,81,92,101,108,114,119,125 ${INPUT_FILES} 
-
+ `which blink_pipeline` -u -c 4 -C -1 -t 1s  -o ${OUTPUT_DIR} -n 8192  -F 30 -M ${METAFITS}  -w N -v 100 -r -L -G -s ${SOL_FILE} -b 0  -r -V 1 -A 21,25,58,71,80,81,92,101,108,114,119,125 ${INPUT_FILES} 
+    p_end_time=`date +%s`
+    p_elapsed=$((p_end_time-p_start_time))
+    echo "Pipeline took $p_elapsed seconds."
 cd ${OUTPUT_DIR}
 find . -name "*real.fits" > fits_list_all
 avg_images fits_list_all avg_all.fits rms_all.fits -r 10000000.00
-#
-cp $OUTPUT_DIR/avg_all.fits $MYSCRATCH/output_all_channels_new.fits
-#calcfits_bg avg_all.fits = ${BLINK_TEST_DATADIR}/mwa/1276619416/results/full_imaging/avg_all.fits 

@@ -1,0 +1,7 @@
+slurm-20793843.out:cross_correlation_kernel    48    2689.082013        56.022541    60.532585243210754  
+slurm-20793860.out:cross_correlation_kernel    48    2664.212773        55.504432    60.4512609220445     
+slurm-20793861.out:cross_correlation_kernel    48    2674.768999        55.724354    60.52949107337388   
+slurm-20793862.out:cross_correlation_kernel    48    2663.411748        55.487744    60.452604392014685  
+slurm-20793863.out:cross_correlation_kernel    48    2663.809573        55.496032    60.468383509813336  
+slurm-20793866.out:cross_correlation_kernel    48    2672.942783        55.686307    60.53634169037573   
+slurm-20793868.out:cross_correlation_kernel    48    2664.086086        55.501793    60.436642135910226  

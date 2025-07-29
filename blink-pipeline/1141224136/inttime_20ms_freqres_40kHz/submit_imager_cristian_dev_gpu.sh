@@ -1,8 +1,8 @@
 #!/bin/bash -e 
-#SBATCH --account=director2183-gpu
+#SBATCH --account=pawsey1154-gpu
 #SBATCH --gres=gpu:1
 #SBATCH --partition=gpu
-#SBATCH --time=24:00:00
+#SBATCH --time=12:00:00
 #SBATCH --export=NONE
 #SBATCH --output=logs/slurm-%A.out 
 # A nice way to execute a command and print the command line
@@ -10,8 +10,7 @@ function print_run {
 	echo "Executing $@"
 	$@
 }
-module use /software/projects/director2183/cdipietrantonio/setonix/2024.05/modules/zen3/gcc/12.2.0
-module load msfitslib/master-rmfufbl blink-pipeline-gpu/cristian-dev
+module load blink-pipeline-gpu/cristian-dev
 
 INPUT_DIR=/scratch/mwavcs/msok/1141224136/combined
 INPUT_FILES="${INPUT_DIR}/1141224136_*_ch*.dat"

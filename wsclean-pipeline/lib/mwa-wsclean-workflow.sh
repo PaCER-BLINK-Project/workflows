@@ -97,29 +97,10 @@ function run_correlator {
         echo "Skipping correlation... raw visibilities already exist."
         return 0
     fi
-    INPUT_DATA_FILES="${OBSERVATIONS_ROOT_DIR}/${OBSERVATION_ID}_${OBS_GPSTIME}_*.dat"
-    # This will only work for coarse channels >= 133
-    inverse_gpu_boxes=("24" "23" "22" "21" "20" "19" "18" "17" "16" "15" "14" "13" "12" "11" "10" "09" "08" "07" "06" "05" "04" "03" "02" "01")
-    declare -i index
-    index=0
-    echo "Offline correlator started at" `date +"%s"`
+    INPUT_DATA_FILES="${OBSERVATIONS_ROOT_DIR}/${OBSERVATION_ID}_${OBS_GPSTIME}_ch*.dat"
+
     p_start_time=`date +%s`
-    for input_file in `ls -1 ${INPUT_DATA_FILES} | sort`; do
-    START_SECOND=${OBS_UNIX_TIMESTAMP}
-    CHANS_TO_AVERAGE=4
-    GPUBOX_CHANNEL_NUMBER=${inverse_gpu_boxes[$index]}
-    OUTPUT_PREFIX=$OBSERVATION_ID
-    export obsid=${OBSERVATION_ID} 
-    print_run ${LAUNCHER} offline_correlator\
-       -d $input_file\
-       -s $START_SECOND\
-       -r $DUMPS_PER_SECOND\
-       -n $CHANS_TO_AVERAGE\
-       -c $GPUBOX_CHANNEL_NUMBER\
-       -o $OUTPUT_PREFIX > /dev/null
-    
-    (( index=index + 1 ))
-    done
+    print_run blink-correlator -t ${resolution} -c 4 -o ${vis_dir} ${INPUT_DATA_FILES}  
     p_end_time=`date +%s`
     p_elapsed=$((p_end_time-p_start_time))
     echo "Offline correlator took $p_elapsed seconds."
@@ -141,7 +122,9 @@ function run_cotter {
     echo "Cotter started at" `date +"%s"`
     p_start_time=`date +%s`
      # -centre 18h33m41.89s -03d39m04.25 -edgewidth=80
-    print_run ${LAUNCHER} cotter  -j ${NCORES}  -timeres ${COTTER_TIMERES} -freqres 0.04 -edgewidth 0 -noflagautos -norfi -nostats -full-apply ${bin_file} -flagantenna 25,58,71,80,81,92,101,108,114,119,125 -m "${METADATA_DIR}/${UTC_TIMESTAMP}.metafits" -noflagmissings -allowmissing -offline-gpubox-format -initflag 0   -o corrected_visibilities.ms ${RAW_VISIBILITIES}
+     # -flagantenna 25,58,71,80,81,92,101,108,114,119,125
+# 
+    print_run ${LAUNCHER} cotter  -j ${NCORES}  -timeres ${COTTER_TIMERES} -freqres 0.04 -edgewidth 0 -noflagautos -norfi -nostats  -full-apply ${bin_file} -m "${METADATA_DIR}/${UTC_TIMESTAMP}.metafits" -noflagmissings -allowmissing -offline-gpubox-format -initflag 0   -o corrected_visibilities.ms ${RAW_VISIBILITIES}
     p_end_time=`date +%s`
     p_elapsed=$((p_end_time-p_start_time))
     echo "Cotter took $p_elapsed seconds."
@@ -188,7 +171,8 @@ function run_wsclean {
     mkdir -p "${img_dir}"
     cd "${img_dir}"
     p_start_time=`date +%s`
-    print_run ${LAUNCHER} wsclean -name ${output_image_name} -j ${NCORES} -size ${imagesize} ${imagesize}  -pol i -intervals-out ${iout} -use-idg -idg-mode gpu   -weight ${weighting} -nwlayers 1 -scale $pixscale -niter ${n_iter} ${channels_out} "${CURRENT_SECOND_WORK_DIR}/corrected_visibilities.ms" 
+# -intervals-out ${iout}
+    print_run ${LAUNCHER} wsclean -name ${output_image_name} -j ${NCORES} -size ${imagesize} ${imagesize}  -pol i -use-idg -idg-mode cpu  -weight ${weighting} -nwlayers 1 -scale $pixscale -niter ${n_iter} ${channels_out} "${CURRENT_SECOND_WORK_DIR}/corrected_visibilities.ms" 
     # print_run ${LAUNCHER} wsclean -name ${output_image_name} -j ${NCORES} -size ${imagesize} ${imagesize}  -pol i -intervals-out ${iout} -gridder wgridder  -weight ${weighting} -scale $pixscale -niter ${n_iter} ${channels_out} "${CURRENT_SECOND_WORK_DIR}/corrected_visibilities.ms" 
     p_end_time=`date +%s`
     p_elapsed=$((p_end_time-p_start_time))
