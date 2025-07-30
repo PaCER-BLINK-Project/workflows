@@ -14,14 +14,14 @@ function print_run {
 module use /software/setonix/unsupported/
 module load blink-pipeline-gpu/debug
 
-. common.sh
+. ../common.sh
 
 OBSERVATION_ID=1192477696
 SOLUTION_ID=1192467680
-OUTPUT_SUFFIX=_crab_4
-SECONDS_TO_PROCESS=4
+OUTPUT_SUFFIX=_crab_timeseries
+SECONDS_TO_PROCESS=10
 
-DEBUG_LINE="gdb --args"
+# DEBUG_LINE="gdb --args"
 
-run_blink -c 4 -t 20ms -n 1000 -S 4.5 -D50:60:1
+print_run run_blink -c 4 -t 20ms -n 1000 -S 4.5 -D50:60:1
 

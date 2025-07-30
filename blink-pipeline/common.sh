@@ -37,7 +37,7 @@ function run_blink {
         # we only want to process the first N seconds, likely for testing
         n_files_to_process=$((SECONDS_TO_PROCESS * 24))
         INPUT_FILES=${filelist[@]:0:n_files_to_process} 
-        $DEBUG_LINE `which blink_pipeline` $@  -o ${OUTPUT_DIR}${OUTPUT_SUFFIX} -M ${METAFITS} -r -s ${SOL_FILE} -b 0 $INPUT_FILES
+        print_run $SRUN_LINE $DEBUG_LINE `which blink_pipeline` $@  -o ${OUTPUT_DIR}${OUTPUT_SUFFIX} -M ${METAFITS} -r -s ${SOL_FILE} -b 0 $INPUT_FILES
          
     else
         # we want to process the entire observation
