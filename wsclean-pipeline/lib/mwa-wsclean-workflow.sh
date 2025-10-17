@@ -100,7 +100,7 @@ function run_correlator {
     INPUT_DATA_FILES="${OBSERVATIONS_ROOT_DIR}/${OBSERVATION_ID}_${OBS_GPSTIME}_ch*.dat"
 
     p_start_time=`date +%s`
-    print_run blink-correlator -t ${resolution} -c 4 -o ${vis_dir} ${INPUT_DATA_FILES}  
+    print_run blink-correlator -a 136 -t ${resolution} -c 4 -o ${vis_dir} ${INPUT_DATA_FILES}  
     p_end_time=`date +%s`
     p_elapsed=$((p_end_time-p_start_time))
     echo "Offline correlator took $p_elapsed seconds."
@@ -116,7 +116,10 @@ function run_cotter {
     # Offline correlator vis
     RAW_VISIBILITIES="${CURRENT_SECOND_WORK_DIR}/raw_visibilities/*.fits"
     bin_file=`ls ${CALIBRATION_DIR}/*.bin`
-    
+    echo "bin file is $bin_file"
+    if [ -f $bin_file ]; then
+        APPLY_SOLUTIONS="-fully-apply $bin_file"
+    fi 
     # Run contter
     object="00h36m08.95s -10d34m00.3s"
     echo "Cotter started at" `date +"%s"`
@@ -124,7 +127,7 @@ function run_cotter {
      # -centre 18h33m41.89s -03d39m04.25 -edgewidth=80
      # -flagantenna 25,58,71,80,81,92,101,108,114,119,125
 # 
-    print_run ${LAUNCHER} cotter  -j ${NCORES}  -timeres ${COTTER_TIMERES} -freqres 0.04 -edgewidth 0 -noflagautos -norfi -nostats  -full-apply ${bin_file} -m "${METADATA_DIR}/${UTC_TIMESTAMP}.metafits" -noflagmissings -allowmissing -offline-gpubox-format -initflag 0   -o corrected_visibilities.ms ${RAW_VISIBILITIES}
+    print_run ${LAUNCHER} cotter  -j ${NCORES}  -timeres ${COTTER_TIMERES} -freqres 40 -edgewidth 0 -noflagautos -norfi -nostats  -m "${METADATA_DIR}/${UTC_TIMESTAMP}.metafits" -noflagmissings -allowmissing -offline-gpubox-format -initflag 0   -o corrected_visibilities.ms ${RAW_VISIBILITIES}
     p_end_time=`date +%s`
     p_elapsed=$((p_end_time-p_start_time))
     echo "Cotter took $p_elapsed seconds."

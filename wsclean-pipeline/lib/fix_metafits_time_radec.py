@@ -23,7 +23,7 @@ def unix_to_utc(unix_time):
 
 
 def azel2radec(azimut, elevation, time_unix):
-    mwa_location = EarthLocation(lat='-26.70331', lon='116.6708', height=377*u.m)
+    mwa_location = EarthLocation.from_geodetic(lat=-26.70331*u.deg, lon=116.6708*u.deg, height=377*u.m)
     # need time in local time?
     local_time = (datetime.fromtimestamp(time_unix) - timedelta(hours=8)).isoformat()
     print(local_time)

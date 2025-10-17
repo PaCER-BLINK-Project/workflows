@@ -11,8 +11,8 @@
 
 
 TIME_RESOLUTION=${TIME_RESOLUTION:-"1s"}
+module load python/3.11.6 cotter/latest wsclean/3.4-idg-everybeam  # cotter/v4.5 
 module load blink-correlator/master
-module load python/3.11.6 cotter/v4.6/module wsclean/3.4-idg-everybeam  # cotter/v4.5 
 #spack load birli
 
 
