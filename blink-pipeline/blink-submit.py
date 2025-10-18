@@ -23,39 +23,55 @@ fi
 """
 
 GLOBAL_CONFIG = {
-    'data_path_prefix' : '/scratch/$PAWSEY_PROJECT/$USER'
+    "data_path_prefix" : f"/scratch/{os.getenv('PAWSEY_PROJECT')}/{os.getenv('USER')}"
     # TODO add default pixsizes for different types of observations
 }
 
+# TODO set proper output log directory / policy
+# TODO set proper job name
 
-def submit_job(observation_id : int, solution_id : int, image_size : int,
+def submit_job(observation_id : int, image_size : int,
         ra : float, dec : float, reorder : bool, start_offset : int,
-        duration : int, flagged_antennas : list, dedisp : str, snr : float,
-        dyspec : str,
-        slm_partition : str, slm_account : str, slm_time : str):
+        duration : int, time_res : float, freq_avg_factor : int,
+        oversampling : float, average_images : bool, flagging_threshold : float,
+        flagged_antennas : list, dedisp : str, snr : float, dyspec : str,
+        slm_partition : str, slm_account : str, slm_time : str, dry_run : bool):
 
+    # TODO: make sure the following paths exist
     observation_path = f"{GLOBAL_CONFIG['data_path_prefix']}/{observation_id}"
     combined_files_path = f"{observation_path}/combined"
     metafits_file = f"{observation_path}/{observation_id}.metafits"
-    solutions_file = f"{observation_path}/{solution_id}.bin"
+    # find the solution file
+    bin_filenames = [x for x in os.listdir(observation_path) if x.endswith(".bin")]
+    if len(bin_filenames) == 0:
+        raise Exception("No .bin file found in the observation's directory.")
+    solutions_file = f"{observation_path}/{bin_filenames[0]}"
     output_dir = f"{observation_path}_output_ra{ra:.3f}_dec{dec:.3f}"
-    slurm_out_file = f"{output_dir}"
+    slurm_out_file = f"{output_dir}/slurm-%A.out"
 
     slurm_sbatch_args = f"--gres=gpu:8 --partition={slm_partition} " \
         f"--account={slm_account}-gpu --output={slurm_out_file} --time={slm_time}"
 
-    blink_line=f"blink_pipeline -u -c 4 -t 1s -o {output_dir} " \
-        f"-n {image_size}  -M {metafits_file} {"-r" if reorder else ""} " \
-        f"-s {solutions_file} -b 0 -I {combined_files_path} -X {start_offset} "
+    # -u
+
+    blink_line = f"blink_pipeline -c {freq_avg_factor} -t {time_res}s -o {output_dir} " \
+        f"-n {image_size} -O {oversampling} -M {metafits_file} {'-r' if reorder else ''} " \
+        f"-s {solutions_file} -b 0 -I {combined_files_path} -X {start_offset}"
     
+    if average_images:
+        blink_line += " -u"
+    
+    if flagging_threshold > 0:
+        blink_line += f" -f {flagging_threshold}"
+
     if duration >= 0:
-        blink_line += f" -Q {duration} "
+        blink_line += f" -Q {duration}"
     
     if ra is not None and dec is not None:
-        blink_line +=  f" -P {ra},{dec} "
+        blink_line +=  f" -P {ra},{dec}"
     
     if len(flagged_antennas) > 0:
-        blink_line += f' -A {",".join(str(x) for x in flagged_antennas)} '
+        blink_line += f' -A {",".join(str(x) for x in flagged_antennas)}'
     
     if dedisp is not None:
         tokens = dedisp.split(':')
@@ -67,11 +83,14 @@ def submit_job(observation_id : int, solution_id : int, image_size : int,
         blink_line += f' -d {dyspec} '
         
     
-    wrap_command  = "module load blink-pipeline-gpu/main ;"
+    wrap_command  = "module load blink-pipeline-gpu/main ; "
     wrap_command += f"{blink_line} ;"
     
     submit_command_line = f"sbatch {slurm_sbatch_args} --wrap \"{wrap_command}\""
-    os.system(submit_command_line)
+    print("Submitting BLINK job with the following command:\n" + submit_command_line)
+
+    if not dry_run:
+        os.system(submit_command_line)
 
 
 
@@ -104,7 +123,6 @@ if __name__ == "__main__":
 
     # Observation information
     parser.add_argument("--obsid", type=str, help="Observation ID", default="1192477696")
-    parser.add_argument("--calid", type=str, help="Calibration solution ID", default="1192467680")
     parser.add_argument("--pixsize", type=float, default=None, help="Size of a pixel (side) in degrees.")
     parser.add_argument("--mwax", action='store_true', help="It is an MWAX observation.")
     parser.add_argument("--no-flags", action='store_true', help="Do NOT flag bad tiles.")
@@ -114,8 +132,18 @@ if __name__ == "__main__":
     parser.add_argument("--duration", type=int, default=-1, help="Number of seconds to process. Default: all seconds.")
     parser.add_argument("--tilesize", type=int, default=-1, help="Enable FoV tiling by specifying the size of the tile (side).")
     parser.add_argument("--imgsize", type=int, required=True, help="Size of the image (side, e.g. 4096)")
+    parser.add_argument("--centre", type=str, default=None, help="Specify phase centre coordinates in RA,DEC degrees.")
+    parser.add_argument("--snr", type=float, default=10, help="SNR threshold for detections in dedispersion mode.")
+    parser.add_argument("--time-res", type=float, default=0.02, help="Time resolution.")
+    parser.add_argument("--freq-avg", type=int, default=4, help="Frequency averaging factor.")
+    parser.add_argument("--oversampling", type=float, default=2, help="Imaging oversampling factor.")
+    parser.add_argument("--avg-images", action='store_true', help="Enable image averaging across the entire coarse channel and second.")
+    parser.add_argument("--img-flag", type=float, default=8, help="Image RMS flagging threshold.")
+
+    # execution modes
     parser.add_argument("--dyspec", type=str, default=None, help="Enable dynamic spectrum mode by passing pixels coordinates (x1,y1:x2,y2:x3,y3).")
     parser.add_argument("--dedisp", type=str, default=None, help="Enable dedispersion mode by passing the DM range in the format min:max:step (e.g. 50:60:1)")
+    parser.add_argument("--dry-run", action='store_true', help="Do not actually submit jobs.")
 
     # SLURM configuratino options
     parser.add_argument("--partition", default="gpu", type=str, help="Setonix GPU partition where to submit the job")
@@ -123,18 +151,29 @@ if __name__ == "__main__":
     parser.add_argument("--time", type=str, default="24:00:00", help="Slurm job walltime.")
 
     # parser.add_argument("--overlap")
-    parser.add_argument("metafits", type=str, help="Path to the metafits file.")
     args = vars(parser.parse_args())
     
     tile_size = args['tilesize']
     img_size = args['imgsize']
     pix_size_deg = args['pixsize']
 
-    metafits_file = f"{GLOBAL_CONFIG["data_path_prefix"]}/{args["obsid"]}/{args["obsid"]}.metafits"
+    # TODO: compute image size given pixsize
+
+    metafits_file = f"{GLOBAL_CONFIG['data_path_prefix']}/{args['obsid']}/{args['obsid']}.metafits"
     pc_ra_deg, pc_dec_deg, flagged_antennas = get_info_from_metafits(metafits_file)
     
     if args['no_flags']:
         flagged_antennas = []
+    
+    if args['centre'] is not None:
+        tokens = args['centre'].split(',')
+        if len(tokens) != 2: raise ValueError("Phase centre spec is malformed.")
+        pc_ra_deg, pc_dec_deg = float(tokens[0]), float(tokens[1])
+    
 
-    submit_job(args["obsid"], args['calid'], args["imgsize"], None, None, not args["mwax"],
-        args["offset"], args["duration"], flagged_antennas, args["partition"], args["account"], args["time"])
+    # TODO: add estimate of cost in SU in printed summary
+
+    submit_job(args["obsid"], args["imgsize"], pc_ra_deg, pc_dec_deg, not args["mwax"],
+        args["offset"], args["duration"], args["time_res"], args["freq_avg"], args["oversampling"],
+        args["avg_images"], args["img_flag"], flagged_antennas, args["dedisp"],
+        args["snr"], args["dyspec"], args["partition"], args["account"], args["time"], args["dry_run"])
