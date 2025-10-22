@@ -12,7 +12,9 @@ def get_info_from_metafits(metafits_file):
     ra = hdus[0].header['RA']
     dec = hdus[0].header['DEC']
     flagged_antennas = set([row['ANTENNA'] for row in hdus[1].data if row['FLAG'] > 0])
-    return ra, dec, flagged_antennas
+    n_antennas = len(hdus[1].data) // 2
+    project = hdus[0].header['PROJECT']
+    return project, ra, dec, n_antennas, flagged_antennas
 
 """
 if ! [ -e $OUTPUT_DIR ]; then
@@ -27,17 +29,41 @@ GLOBAL_CONFIG = {
     # TODO add default pixsizes for different types of observations
 }
 
-# TODO set proper output log directory / policy
-# TODO set proper job name
+SEARCH_PARAMETERS = {
+    'extended' : {
 
-def submit_job(observation_id : int, image_size : int,
+    },
+
+    'SMART' : {
+        'oversampling' : 1,
+        'imgsize' : 256,
+        'dm_range' : [
+            '10:100:1',
+            '101:200:1',
+            '201:300:1',
+            '301:350:1',
+            '351:400:1',
+            '401:450:1',
+            '451:500:1'
+        ],
+        'duration' : 1196,
+        'offsets' : [0, 1170, 2340, 3510, 4680], # allow 30 seconds overlap
+    }
+}
+
+# TODO set proper output log directory / policy
+# TODO print job cost prediction
+
+def submit_job(observation_id : int, n_antennas : int, image_size : int,
         ra : float, dec : float, reorder : bool, start_offset : int,
         duration : int, time_res : float, freq_avg_factor : int,
         oversampling : float, average_images : bool, flagging_threshold : float,
         flagged_antennas : list, dedisp : str, snr : float, dyspec : str,
-        slm_partition : str, slm_account : str, slm_time : str, dry_run : bool):
+        slm_partition : str, slm_account : str, slm_time : str,
+        dir_postfix : str, dry_run : bool):
 
     # TODO: make sure the following paths exist
+    # Move FS operations outside?
     observation_path = f"{GLOBAL_CONFIG['data_path_prefix']}/{observation_id}"
     combined_files_path = f"{observation_path}/combined"
     metafits_file = f"{observation_path}/{observation_id}.metafits"
@@ -47,14 +73,20 @@ def submit_job(observation_id : int, image_size : int,
         raise Exception("No .bin file found in the observation's directory.")
     solutions_file = f"{observation_path}/{bin_filenames[0]}"
     output_dir = f"{observation_path}_output_ra{ra:.3f}_dec{dec:.3f}"
+    if dir_postfix is not None: output_dir += f"_{dir_postfix}"
     slurm_out_file = f"{output_dir}/slurm-%A.out"
-
-    slurm_sbatch_args = f"--gres=gpu:8 --partition={slm_partition} " \
+    
+    if dedisp is not None:
+        job_title = f"BLINK Dedispersion - {observation_id} -  RA {ra:.3f} DEC {dec:.3f} - DM range {dedisp}"
+    elif dyspec is not None:
+        job_title = f"BLINK Dynamic Spectrum - {observation_id} - {dyspec}"
+    else:
+        job_title = f"BLINK Imaging - {observation_id}"
+    
+    slurm_sbatch_args = f"--gres=gpu:8 --partition={slm_partition} --job-name=\"{job_title}\" " \
         f"--account={slm_account}-gpu --output={slurm_out_file} --time={slm_time}"
 
-    # -u
-
-    blink_line = f"blink_pipeline -c {freq_avg_factor} -t {time_res}s -o {output_dir} " \
+    blink_line = f"blink_pipeline -R {n_antennas} -c {freq_avg_factor} -t {time_res}s -o {output_dir} " \
         f"-n {image_size} -O {oversampling} -M {metafits_file} {'-r' if reorder else ''} " \
         f"-s {solutions_file} -b 0 -I {combined_files_path} -X {start_offset}"
     
@@ -77,7 +109,8 @@ def submit_job(observation_id : int, image_size : int,
         tokens = dedisp.split(':')
         if len(tokens) != 3:
             raise ValueError(f"Dedispersion range is malformed: {dedisp}")
-        blink_line += f' -D {dedisp} -S {snr} '
+        postfix = f"dm_range_{dedisp.replace(':', '_')}"
+        blink_line += f' -D {dedisp} -S {snr} -p {postfix} '
 
     if dyspec is not None:
         blink_line += f' -d {dyspec} '
@@ -91,7 +124,6 @@ def submit_job(observation_id : int, image_size : int,
 
     if not dry_run:
         os.system(submit_command_line)
-
 
 
 
@@ -131,7 +163,7 @@ if __name__ == "__main__":
     parser.add_argument("--offset", type=int, default=0, help="Number of seconds to skip from the start of the observations.")
     parser.add_argument("--duration", type=int, default=-1, help="Number of seconds to process. Default: all seconds.")
     parser.add_argument("--tilesize", type=int, default=-1, help="Enable FoV tiling by specifying the size of the tile (side).")
-    parser.add_argument("--imgsize", type=int, required=True, help="Size of the image (side, e.g. 4096)")
+    parser.add_argument("--imgsize", type=int, default=256, help="Size of the image (side, e.g. 4096)")
     parser.add_argument("--centre", type=str, default=None, help="Specify phase centre coordinates in RA,DEC degrees.")
     parser.add_argument("--snr", type=float, default=10, help="SNR threshold for detections in dedispersion mode.")
     parser.add_argument("--time-res", type=float, default=0.02, help="Time resolution.")
@@ -144,6 +176,11 @@ if __name__ == "__main__":
     parser.add_argument("--dyspec", type=str, default=None, help="Enable dynamic spectrum mode by passing pixels coordinates (x1,y1:x2,y2:x3,y3).")
     parser.add_argument("--dedisp", type=str, default=None, help="Enable dedispersion mode by passing the DM range in the format min:max:step (e.g. 50:60:1)")
     parser.add_argument("--dry-run", action='store_true', help="Do not actually submit jobs.")
+    parser.add_argument("--dir-postfix", type=str, default=None, help="Adds the specified postfix to the output directory.")
+    parser.add_argument("--search", action='store_true', help="Run an FRB search over the entire parameter space.")
+    parser.add_argument("--time-bins", type=int, nargs='*', help="Limit the search to the specified time intevals. Intervals are specified with 0-based indexing.")
+    parser.add_argument("--dm-bins", type=int, nargs='*', help="Limit the search to the specified DM intevals. Intervals are specified with 0-based indexing.")
+    
 
     # SLURM configuratino options
     parser.add_argument("--partition", default="gpu", type=str, help="Setonix GPU partition where to submit the job")
@@ -160,7 +197,7 @@ if __name__ == "__main__":
     # TODO: compute image size given pixsize
 
     metafits_file = f"{GLOBAL_CONFIG['data_path_prefix']}/{args['obsid']}/{args['obsid']}.metafits"
-    pc_ra_deg, pc_dec_deg, flagged_antennas = get_info_from_metafits(metafits_file)
+    project, pc_ra_deg, pc_dec_deg, n_antennas, flagged_antennas = get_info_from_metafits(metafits_file)
     
     if args['no_flags']:
         flagged_antennas = []
@@ -171,9 +208,35 @@ if __name__ == "__main__":
         pc_ra_deg, pc_dec_deg = float(tokens[0]), float(tokens[1])
     
 
-    # TODO: add estimate of cost in SU in printed summary
+    if args['search']:
+        if project == 'G0057':
+            offsets = SEARCH_PARAMETERS['SMART']['offsets']
+            dm_ranges =  SEARCH_PARAMETERS['SMART']['dm_range']
+            selected_time_bins = args["time_bins"]
+            selected_dm_bins = args["dm_bins"]
 
-    submit_job(args["obsid"], args["imgsize"], pc_ra_deg, pc_dec_deg, not args["mwax"],
-        args["offset"], args["duration"], args["time_res"], args["freq_avg"], args["oversampling"],
-        args["avg_images"], args["img_flag"], flagged_antennas, args["dedisp"],
-        args["snr"], args["dyspec"], args["partition"], args["account"], args["time"], args["dry_run"])
+            if len(selected_time_bins) == 0:
+                selected_time_bins = list(range(len(offsets)))
+            if len(selected_dm_bins) == 0:
+                selected_dm_bins = list(range(len(dm_ranges)))
+
+            for j, dm_range in enumerate(dm_ranges):
+                if j not in selected_dm_bins: continue
+                for i, offset in enumerate(offsets):
+                    if i not in selected_time_bins: continue
+                    duration = -1 if (i == len(offsets) - 1) else SEARCH_PARAMETERS['SMART']['duration']
+                    submit_job(args["obsid"], n_antennas, SEARCH_PARAMETERS['SMART']['imgsize'], pc_ra_deg, pc_dec_deg, 
+                        not args["mwax"],
+                        offset, duration, args["time_res"], args["freq_avg"], SEARCH_PARAMETERS['SMART']['oversampling'],
+                        args["avg_images"], args["img_flag"], flagged_antennas, dm_range,
+                        args["snr"], args["dyspec"], args["partition"], args["account"], args["time"],
+                        args["dir_postfix"], args["dry_run"])
+            
+        # TODO: add estimate of cost in SU in printed summary
+    else:
+
+        submit_job(args["obsid"], n_antennas, args["imgsize"], pc_ra_deg, pc_dec_deg, not args["mwax"],
+            args["offset"], args["duration"], args["time_res"], args["freq_avg"], args["oversampling"],
+            args["avg_images"], args["img_flag"], flagged_antennas, args["dedisp"],
+            args["snr"], args["dyspec"], args["partition"], args["account"], args["time"],
+            args["dir_postfix"], args["dry_run"])
