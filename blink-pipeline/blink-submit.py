@@ -25,13 +25,25 @@ fi
 """
 
 GLOBAL_CONFIG = {
-    "data_path_prefix" : f"/scratch/{os.getenv('PAWSEY_PROJECT')}/{os.getenv('USER')}"
+    "data_path_prefix" : f"/scratch/pawsey1154/{os.getenv('USER')}",
     # TODO add default pixsizes for different types of observations
+    "project_modulepath" : " /software/projects/pawsey1154/setonix/2025.08/modules/zen3/gcc/14.2.0",
+    "user_modulepath" : f"/software/projects/pawsey1154/{os.getenv('USER')}/setonix/2025.08/modules/zen3/gcc/14.2.0"
 }
 
 SEARCH_PARAMETERS = {
     'extended' : {
-
+        'imgsize' : 1024,
+        'dm_range' : [
+            '10:100:1',
+            '101:200:1',
+            '201:300:1',
+            '301:400:1',
+            '401:500:1',
+            '501:550:1',
+            '551:600:1'
+        ],
+        'duration' : 600,
     },
 
     'SMART' : {
@@ -41,12 +53,12 @@ SEARCH_PARAMETERS = {
             '10:100:1',
             '101:200:1',
             '201:300:1',
-            '301:350:1',
-            '351:400:1',
-            '401:450:1',
-            '451:500:1'
+            '301:400:1',
+            '401:500:1',
+            '501:550:1',
+            '551:600:1'
         ],
-        'duration' : 1196,
+        'duration' : 600,
         'offsets' : [0, 1170, 2340, 3510, 4680], # allow 30 seconds overlap
     }
 }
@@ -60,7 +72,7 @@ def submit_job(observation_id : int, n_antennas : int, image_size : int,
         oversampling : float, average_images : bool, flagging_threshold : float,
         flagged_antennas : list, dedisp : str, snr : float, dyspec : str,
         slm_partition : str, slm_account : str, slm_time : str,
-        dir_postfix : str, dry_run : bool):
+        dir_postfix : str, module : str, dry_run : bool):
 
     # TODO: make sure the following paths exist
     # Move FS operations outside?
@@ -72,12 +84,12 @@ def submit_job(observation_id : int, n_antennas : int, image_size : int,
     if len(bin_filenames) == 0:
         raise Exception("No .bin file found in the observation's directory.")
     solutions_file = f"{observation_path}/{bin_filenames[0]}"
-    output_dir = f"{observation_path}_output_ra{ra:.3f}_dec{dec:.3f}"
+    output_dir = f"{observation_path}_output" #_output_ra{ra:.3f}_dec{dec:.3f}"
     if dir_postfix is not None: output_dir += f"_{dir_postfix}"
     slurm_out_file = f"{output_dir}/slurm-%A.out"
     
     if dedisp is not None:
-        job_title = f"BLINK Dedispersion - {observation_id} -  RA {ra:.3f} DEC {dec:.3f} - DM range {dedisp}"
+        job_title = f"BLINK Dedispersion - {observation_id} - OFFSET {start_offset} - DM range {dedisp}"
     elif dyspec is not None:
         job_title = f"BLINK Dynamic Spectrum - {observation_id} - {dyspec}"
     else:
@@ -109,14 +121,19 @@ def submit_job(observation_id : int, n_antennas : int, image_size : int,
         tokens = dedisp.split(':')
         if len(tokens) != 3:
             raise ValueError(f"Dedispersion range is malformed: {dedisp}")
-        postfix = f"dm_range_{dedisp.replace(':', '_')}"
+        postfix = f"start_second_{start_offset}_dm_range_{dedisp.replace(':', '_')}"
         blink_line += f' -D {dedisp} -S {snr} -p {postfix} '
 
     if dyspec is not None:
         blink_line += f' -d {dyspec} '
-        
     
-    wrap_command  = "module load blink-pipeline-gpu/main ; "
+    module_env_setup = f"""
+    module use {GLOBAL_CONFIG["project_modulepath"]};
+    module use {GLOBAL_CONFIG["user_modulepath"]};
+    module load {module};
+    """
+    
+    wrap_command  = module_env_setup
     wrap_command += f"{blink_line} ;"
     
     submit_command_line = f"sbatch {slurm_sbatch_args} --wrap \"{wrap_command}\""
@@ -165,12 +182,12 @@ if __name__ == "__main__":
     parser.add_argument("--tilesize", type=int, default=-1, help="Enable FoV tiling by specifying the size of the tile (side).")
     parser.add_argument("--imgsize", type=int, default=256, help="Size of the image (side, e.g. 4096)")
     parser.add_argument("--centre", type=str, default=None, help="Specify phase centre coordinates in RA,DEC degrees.")
-    parser.add_argument("--snr", type=float, default=10, help="SNR threshold for detections in dedispersion mode.")
+    parser.add_argument("--snr", type=float, default=7, help="SNR threshold for detections in dedispersion mode.")
     parser.add_argument("--time-res", type=float, default=0.02, help="Time resolution.")
     parser.add_argument("--freq-avg", type=int, default=4, help="Frequency averaging factor.")
     parser.add_argument("--oversampling", type=float, default=2, help="Imaging oversampling factor.")
     parser.add_argument("--avg-images", action='store_true', help="Enable image averaging across the entire coarse channel and second.")
-    parser.add_argument("--img-flag", type=float, default=8, help="Image RMS flagging threshold.")
+    parser.add_argument("--img-flag", type=float, default=5, help="Image RMS flagging threshold.")
 
     # execution modes
     parser.add_argument("--dyspec", type=str, default=None, help="Enable dynamic spectrum mode by passing pixels coordinates (x1,y1:x2,y2:x3,y3).")
@@ -178,9 +195,9 @@ if __name__ == "__main__":
     parser.add_argument("--dry-run", action='store_true', help="Do not actually submit jobs.")
     parser.add_argument("--dir-postfix", type=str, default=None, help="Adds the specified postfix to the output directory.")
     parser.add_argument("--search", action='store_true', help="Run an FRB search over the entire parameter space.")
-    parser.add_argument("--time-bins", type=int, nargs='*', help="Limit the search to the specified time intevals. Intervals are specified with 0-based indexing.")
-    parser.add_argument("--dm-bins", type=int, nargs='*', help="Limit the search to the specified DM intevals. Intervals are specified with 0-based indexing.")
-    
+    parser.add_argument("--time-bins", type=int, default=[], nargs='*', help="Limit the search to the specified time intevals. Intervals are specified with 0-based indexing.")
+    parser.add_argument("--dm-bins", type=int,default=[],  nargs='*', help="Limit the search to the specified DM intevals. Intervals are specified with 0-based indexing.")
+    parser.add_argument("--module", type=str, default="blink-pipeline-gpu/main", help="LMOD module to load the BLINK-pipeline.")
 
     # SLURM configuratino options
     parser.add_argument("--partition", default="gpu", type=str, help="Setonix GPU partition where to submit the job")
@@ -209,8 +226,21 @@ if __name__ == "__main__":
     
 
     if args['search']:
+        observation_path = f"{GLOBAL_CONFIG['data_path_prefix']}/{args['obsid']}"
+        combined_files_path = f"{observation_path}/combined"
+
+        dat_files = [x for x in os.listdir(combined_files_path) if x.endswith(".dat")]
+        n_seconds = len(dat_files) // 24
+        print("N seconds is: ", n_seconds)
+        duration = SEARCH_PARAMETERS['SMART']['duration']
+        offsets = []
+        overlap = 30
+        i = 0
+        while i < n_seconds:
+            offsets.append(i)
+            i += duration - overlap
+        
         if project == 'G0057':
-            offsets = SEARCH_PARAMETERS['SMART']['offsets']
             dm_ranges =  SEARCH_PARAMETERS['SMART']['dm_range']
             selected_time_bins = args["time_bins"]
             selected_dm_bins = args["dm_bins"]
@@ -224,13 +254,14 @@ if __name__ == "__main__":
                 if j not in selected_dm_bins: continue
                 for i, offset in enumerate(offsets):
                     if i not in selected_time_bins: continue
-                    duration = -1 if (i == len(offsets) - 1) else SEARCH_PARAMETERS['SMART']['duration']
-                    submit_job(args["obsid"], n_antennas, SEARCH_PARAMETERS['SMART']['imgsize'], pc_ra_deg, pc_dec_deg, 
+                    curr_duration = -1 if (i == len(offsets) - 1) else duration
+                    img_size = SEARCH_PARAMETERS['SMART']['imgsize']
+                    submit_job(args["obsid"], n_antennas, img_size, pc_ra_deg, pc_dec_deg, 
                         not args["mwax"],
-                        offset, duration, args["time_res"], args["freq_avg"], SEARCH_PARAMETERS['SMART']['oversampling'],
+                        offset, curr_duration, args["time_res"], args["freq_avg"], SEARCH_PARAMETERS['SMART']['oversampling'],
                         args["avg_images"], args["img_flag"], flagged_antennas, dm_range,
-                        args["snr"], args["dyspec"], args["partition"], args["account"], args["time"],
-                        args["dir_postfix"], args["dry_run"])
+                        args["snr"], f"{img_size//2},{img_size//2}", args["partition"], args["account"], args["time"],
+                        args["dir_postfix"], args["module"], args["dry_run"])
             
         # TODO: add estimate of cost in SU in printed summary
     else:
@@ -239,4 +270,4 @@ if __name__ == "__main__":
             args["offset"], args["duration"], args["time_res"], args["freq_avg"], args["oversampling"],
             args["avg_images"], args["img_flag"], flagged_antennas, args["dedisp"],
             args["snr"], args["dyspec"], args["partition"], args["account"], args["time"],
-            args["dir_postfix"], args["dry_run"])
+            args["dir_postfix"], args["module"], args["dry_run"])
