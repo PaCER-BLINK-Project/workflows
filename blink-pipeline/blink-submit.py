@@ -7,14 +7,38 @@ import os
 # Script to tile an observation's FoV in smaller chunks
 # for processing with the BLINK pipeline.
 
+SMART_ANTENNAS_OUTSIDE_CORE = [
+    "LBF1",
+    "LBF2",
+    "LBF3",
+    "LBF4",
+    "LBF5",
+    "LBF6",
+    "LBF7",
+    "LBF8",
+    "LBG1",
+    "LBG2",
+    "LBG3",
+    "LBG4",
+    "LBG5",
+    "LBG6",
+    "LBG7",
+    "LBG8",
+]
+
 def get_info_from_metafits(metafits_file):
     hdus = fits.open(metafits_file)
     ra = hdus[0].header['RA']
     dec = hdus[0].header['DEC']
-    flagged_antennas = set([row['ANTENNA'] for row in hdus[1].data if row['FLAG'] > 0])
+    outside_core = set()
+    for row in hdus[1].data:
+        if row['TILENAME'] in SMART_ANTENNAS_OUTSIDE_CORE:
+            outside_core.add(row['ANTENNA'])
+    flagged_antennas = set([row['ANTENNA'] for row in hdus[1].data if row['FLAG'] > 0]).union(outside_core)
     n_antennas = len(hdus[1].data) // 2
     project = hdus[0].header['PROJECT']
-    return project, ra, dec, n_antennas, flagged_antennas
+    mode = hdus[0].header['MODE']
+    return project, mode, ra, dec, n_antennas, flagged_antennas
 
 """
 if ! [ -e $OUTPUT_DIR ]; then
@@ -72,7 +96,7 @@ def submit_job(observation_id : int, n_antennas : int, image_size : int,
         oversampling : float, average_images : bool, flagging_threshold : float,
         flagged_antennas : list, dedisp : str, snr : float, dyspec : str,
         slm_partition : str, slm_account : str, slm_time : str,
-        dir_postfix : str, module : str, dry_run : bool):
+        dir_postfix : str, file_postfix : str, module : str, dry_run : bool):
 
     # TODO: make sure the following paths exist
     # Move FS operations outside?
@@ -125,6 +149,12 @@ def submit_job(observation_id : int, n_antennas : int, image_size : int,
         blink_line += f' -D {dedisp} -S {snr} -p {postfix} '
 
     if dyspec is not None:
+        if dedisp is None:
+            if file_postfix is None:
+                postfix = ""
+            else:
+                postfix = file_postfix
+            blink_line += f" -p {postfix} "
         blink_line += f' -d {dyspec} '
     
     module_env_setup = f"""
@@ -135,6 +165,11 @@ def submit_job(observation_id : int, n_antennas : int, image_size : int,
     
     wrap_command  = module_env_setup
     wrap_command += f"{blink_line} ;"
+
+    if dyspec is not None:
+        if dedisp is not None:
+            wrap_command += f"cd {output_dir}; ls -1 dynamic_spectrum_*{postfix}.fits > fits_list_{postfix}; test_totalpower fits_list_{postfix};"
+            wrap_command += f"mv dynamic_spectrum_*{postfix}.total_power totalpower_{start_offset}.power ;"
     
     submit_command_line = f"sbatch {slurm_sbatch_args} --wrap \"{wrap_command}\""
     print("Submitting BLINK job with the following command:\n" + submit_command_line)
@@ -194,6 +229,7 @@ if __name__ == "__main__":
     parser.add_argument("--dedisp", type=str, default=None, help="Enable dedispersion mode by passing the DM range in the format min:max:step (e.g. 50:60:1)")
     parser.add_argument("--dry-run", action='store_true', help="Do not actually submit jobs.")
     parser.add_argument("--dir-postfix", type=str, default=None, help="Adds the specified postfix to the output directory.")
+    parser.add_argument("--file-postfix", type=str, default=None, help="Adds the specified postfix to the output files.")
     parser.add_argument("--search", action='store_true', help="Run an FRB search over the entire parameter space.")
     parser.add_argument("--time-bins", type=int, default=[], nargs='*', help="Limit the search to the specified time intevals. Intervals are specified with 0-based indexing.")
     parser.add_argument("--dm-bins", type=int,default=[],  nargs='*', help="Limit the search to the specified DM intevals. Intervals are specified with 0-based indexing.")
@@ -214,8 +250,9 @@ if __name__ == "__main__":
     # TODO: compute image size given pixsize
 
     metafits_file = f"{GLOBAL_CONFIG['data_path_prefix']}/{args['obsid']}/{args['obsid']}.metafits"
-    project, pc_ra_deg, pc_dec_deg, n_antennas, flagged_antennas = get_info_from_metafits(metafits_file)
-    
+    project, mode, pc_ra_deg, pc_dec_deg, n_antennas, flagged_antennas = get_info_from_metafits(metafits_file)
+    reorder = not mode == 'MWAX_VCS' 
+
     if args['no_flags']:
         flagged_antennas = []
     
@@ -249,7 +286,6 @@ if __name__ == "__main__":
                 selected_time_bins = list(range(len(offsets)))
             if len(selected_dm_bins) == 0:
                 selected_dm_bins = list(range(len(dm_ranges)))
-
             for j, dm_range in enumerate(dm_ranges):
                 if j not in selected_dm_bins: continue
                 for i, offset in enumerate(offsets):
@@ -257,17 +293,17 @@ if __name__ == "__main__":
                     curr_duration = -1 if (i == len(offsets) - 1) else duration
                     img_size = SEARCH_PARAMETERS['SMART']['imgsize']
                     submit_job(args["obsid"], n_antennas, img_size, pc_ra_deg, pc_dec_deg, 
-                        not args["mwax"],
+                        reorder,
                         offset, curr_duration, args["time_res"], args["freq_avg"], SEARCH_PARAMETERS['SMART']['oversampling'],
                         args["avg_images"], args["img_flag"], flagged_antennas, dm_range,
                         args["snr"], f"{img_size//2},{img_size//2}", args["partition"], args["account"], args["time"],
-                        args["dir_postfix"], args["module"], args["dry_run"])
+                        args["dir_postfix"], args["file_postfix"], args["module"], args["dry_run"])
             
         # TODO: add estimate of cost in SU in printed summary
     else:
 
-        submit_job(args["obsid"], n_antennas, args["imgsize"], pc_ra_deg, pc_dec_deg, not args["mwax"],
+        submit_job(args["obsid"], n_antennas, args["imgsize"], pc_ra_deg, pc_dec_deg, reorder,
             args["offset"], args["duration"], args["time_res"], args["freq_avg"], args["oversampling"],
             args["avg_images"], args["img_flag"], flagged_antennas, args["dedisp"],
             args["snr"], args["dyspec"], args["partition"], args["account"], args["time"],
-            args["dir_postfix"], args["module"], args["dry_run"])
+            args["dir_postfix"], args["file_postfix"], args["module"], args["dry_run"])
