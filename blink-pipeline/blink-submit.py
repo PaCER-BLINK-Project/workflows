@@ -24,7 +24,41 @@ SMART_ANTENNAS_OUTSIDE_CORE = [
     "LBG6",
     "LBG7",
     "LBG8",
+    "Tile091",
+    # "Tile088",
+    # "Tile098",
+    # "Tile097",
+    "Tile087",
+    # "Tile081",
+#    "Tile092",
+#    "Tile082",
+#    "Tile028",
 ]
+
+def get_baseline_lengths(metafits_file):
+    hdus = fits.open(metafits_file)
+    ra = hdus[0].header['RA']
+    dec = hdus[0].header['DEC']
+    antenna_pos = []
+    for row in hdus[1].data:
+        if row['Tilename'] in SMART_ANTENNAS_OUTSIDE_CORE: continue
+        antenna_pos.append((row['Tilename'], row['East'], row['North'], row['Height']))
+    
+    n_ant = len(antenna_pos)
+    baseline_lengths = []
+    from math import sqrt
+
+    def comp_dist(a, b):
+        return sqrt((a[1] - b[1])**2 +  (a[2] - b[2])**2 +  (a[3] - b[3])**2)
+
+    for i in range(n_ant):
+        for j in range(0, i):
+            baseline_lengths.append((antenna_pos[i][0], antenna_pos[j][0], comp_dist(antenna_pos[i], antenna_pos[j])))
+    
+    sorted_lengths = sorted(baseline_lengths, key=lambda x: x[2])
+    for i, v in enumerate(sorted_lengths):
+        print(v)
+
 
 def get_info_from_metafits(metafits_file):
     hdus = fits.open(metafits_file)
@@ -82,6 +116,15 @@ SEARCH_PARAMETERS = {
             '501:550:1',
             '551:600:1'
         ],
+        'dmrange_to_timelimit' : {
+            '10:100:1' : '12:00:00',
+            '101:200:1' : '14:00:00',
+            '201:300:1' : '17:00:00',
+            '301:400:1' : '19:00:00',
+            '401:500:1' : '22:00:00',
+            '501:550:1' : '13:00:00',
+            '551:600:1': '13:00:00'
+        },
         'duration' : 600,
         'offsets' : [0, 1170, 2340, 3510, 4680], # allow 30 seconds overlap
     }
@@ -120,7 +163,7 @@ def submit_job(observation_id : int, n_antennas : int, image_size : int,
         job_title = f"BLINK Imaging - {observation_id}"
     
     slurm_sbatch_args = f"--gres=gpu:8 --partition={slm_partition} --job-name=\"{job_title}\" " \
-        f"--account={slm_account}-gpu --output={slurm_out_file} --time={slm_time}"
+        f"--account={slm_account}-gpu --output={slurm_out_file} --time={slm_time} --no-requeue "
 
     blink_line = f"blink_pipeline -R {n_antennas} -c {freq_avg_factor} -t {time_res}s -o {output_dir} " \
         f"-n {image_size} -O {oversampling} -M {metafits_file} {'-r' if reorder else ''} " \
@@ -149,12 +192,8 @@ def submit_job(observation_id : int, n_antennas : int, image_size : int,
         blink_line += f' -D {dedisp} -S {snr} -p {postfix} '
 
     if dyspec is not None:
-        if dedisp is None:
-            if file_postfix is None:
-                postfix = ""
-            else:
-                postfix = file_postfix
-            blink_line += f" -p {postfix} "
+        if dedisp is None and file_postfix is not None:
+            blink_line += f" -p {file_postfix} "
         blink_line += f' -d {dyspec} '
     
     module_env_setup = f"""
@@ -234,6 +273,9 @@ if __name__ == "__main__":
     parser.add_argument("--time-bins", type=int, default=[], nargs='*', help="Limit the search to the specified time intevals. Intervals are specified with 0-based indexing.")
     parser.add_argument("--dm-bins", type=int,default=[],  nargs='*', help="Limit the search to the specified DM intevals. Intervals are specified with 0-based indexing.")
     parser.add_argument("--module", type=str, default="blink-pipeline-gpu/main", help="LMOD module to load the BLINK-pipeline.")
+    parser.add_argument("--int-offset", type=int, default=0, help="Skip the specified number of initial seconds within a time bin. " \
+                        "Useful for check-pointing, when a job goes in time out. For instance, an internal offset of 500 in the time bin 1 " \
+                        "Will start the processing at second 570 + 500 = 1070, and also shorten the duration of the same amount.")
 
     # SLURM configuratino options
     parser.add_argument("--partition", default="gpu", type=str, help="Setonix GPU partition where to submit the job")
@@ -251,6 +293,8 @@ if __name__ == "__main__":
 
     metafits_file = f"{GLOBAL_CONFIG['data_path_prefix']}/{args['obsid']}/{args['obsid']}.metafits"
     project, mode, pc_ra_deg, pc_dec_deg, n_antennas, flagged_antennas = get_info_from_metafits(metafits_file)
+    #get_baseline_lengths(metafits_file)
+    #exit(1)
     reorder = not mode == 'MWAX_VCS' 
 
     if args['no_flags']:
@@ -291,12 +335,18 @@ if __name__ == "__main__":
                 for i, offset in enumerate(offsets):
                     if i not in selected_time_bins: continue
                     curr_duration = -1 if (i == len(offsets) - 1) else duration
+                    ioff = args["int_offset"]
+                    curr_duration -= ioff
+                    print(curr_duration)
+                    print(duration)
+                    offset += ioff
                     img_size = SEARCH_PARAMETERS['SMART']['imgsize']
+                    time_limit = SEARCH_PARAMETERS['SMART']['dmrange_to_timelimit'][dm_range]
                     submit_job(args["obsid"], n_antennas, img_size, pc_ra_deg, pc_dec_deg, 
                         reorder,
                         offset, curr_duration, args["time_res"], args["freq_avg"], SEARCH_PARAMETERS['SMART']['oversampling'],
                         args["avg_images"], args["img_flag"], flagged_antennas, dm_range,
-                        args["snr"], f"{img_size//2},{img_size//2}", args["partition"], args["account"], args["time"],
+                        args["snr"], f"{img_size//2},{img_size//2}", args["partition"], args["account"], time_limit,
                         args["dir_postfix"], args["file_postfix"], args["module"], args["dry_run"])
             
         # TODO: add estimate of cost in SU in printed summary
