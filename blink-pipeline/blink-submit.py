@@ -35,6 +35,44 @@ SMART_ANTENNAS_OUTSIDE_CORE = [
 #    "Tile028",
 ]
 
+"""
+The following method identifies the minimal set of stations to be flagged such that
+all the long baselines are removed, long being an arbitrary threshold.
+
+1. Build a graph where each node is a station and there is an edge between two nodes
+if those nodes represent a long baseline.
+
+2. Sort nodes by number of edges.
+
+3. Iteratively flag the node/station with highest number of edges, until there are no edges 
+left in the graph between unflagged nodes.
+
+"""
+def build_graph(metafits_file):
+    hdus = fits.open(metafits_file)
+    ra = hdus[0].header['RA']
+    dec = hdus[0].header['DEC']
+    antenna_pos = []
+    for row in hdus[1].data:
+        if row['Tilename'] in SMART_ANTENNAS_OUTSIDE_CORE: continue
+        antenna_pos.append((row['Tilename'], row['East'], row['North'], row['Height']))
+    
+    n_ant = len(antenna_pos)
+    baseline_lengths = []
+    from math import sqrt
+
+    def comp_dist(a, b):
+        return sqrt((a[1] - b[1])**2 +  (a[2] - b[2])**2 +  (a[3] - b[3])**2)
+
+    for i in range(n_ant):
+        for j in range(0, i):
+            baseline_lengths.append((antenna_pos[i][0], antenna_pos[j][0], comp_dist(antenna_pos[i], antenna_pos[j])))
+    
+    sorted_lengths = sorted(baseline_lengths, key=lambda x: x[2])
+    for i, v in enumerate(sorted_lengths):
+        print(v)
+
+
 def get_baseline_lengths(metafits_file):
     hdus = fits.open(metafits_file)
     ra = hdus[0].header['RA']
@@ -60,7 +98,7 @@ def get_baseline_lengths(metafits_file):
         print(v)
 
 
-def get_info_from_metafits(metafits_file):
+def get_info_from_metafits(metafits_file, skip_long = True):
     hdus = fits.open(metafits_file)
     ra = hdus[0].header['RA']
     dec = hdus[0].header['DEC']
@@ -68,7 +106,9 @@ def get_info_from_metafits(metafits_file):
     for row in hdus[1].data:
         if row['TILENAME'] in SMART_ANTENNAS_OUTSIDE_CORE:
             outside_core.add(row['ANTENNA'])
-    flagged_antennas = set([row['ANTENNA'] for row in hdus[1].data if row['FLAG'] > 0]).union(outside_core)
+    flagged_antennas = set([row['ANTENNA'] for row in hdus[1].data if row['FLAG'] > 0])
+    if skip_long:
+        flagged_antennas = flagged_antennas.union(outside_core)
     n_antennas = len(hdus[1].data) // 2
     project = hdus[0].header['PROJECT']
     mode = hdus[0].header['MODE']
@@ -139,7 +179,7 @@ def submit_job(observation_id : int, n_antennas : int, image_size : int,
         oversampling : float, average_images : bool, flagging_threshold : float,
         flagged_antennas : list, dedisp : str, snr : float, dyspec : str,
         slm_partition : str, slm_account : str, slm_time : str,
-        dir_postfix : str, file_postfix : str, module : str, dry_run : bool):
+        dir_postfix : str, file_postfix : str, module : str, dry_run : bool, nice : bool):
 
     # TODO: make sure the following paths exist
     # Move FS operations outside?
@@ -164,6 +204,9 @@ def submit_job(observation_id : int, n_antennas : int, image_size : int,
     
     slurm_sbatch_args = f"--gres=gpu:8 --partition={slm_partition} --job-name=\"{job_title}\" " \
         f"--account={slm_account}-gpu --output={slurm_out_file} --time={slm_time} --no-requeue "
+    
+    if nice or slm_partition == "mwa-gpu":
+        slurm_sbatch_args += "--nice=1500"
 
     blink_line = f"blink_pipeline -R {n_antennas} -c {freq_avg_factor} -t {time_res}s -o {output_dir} " \
         f"-n {image_size} -O {oversampling} -M {metafits_file} {'-r' if reorder else ''} " \
@@ -276,11 +319,12 @@ if __name__ == "__main__":
     parser.add_argument("--int-offset", type=int, default=0, help="Skip the specified number of initial seconds within a time bin. " \
                         "Useful for check-pointing, when a job goes in time out. For instance, an internal offset of 500 in the time bin 1 " \
                         "Will start the processing at second 570 + 500 = 1070, and also shorten the duration of the same amount.")
-
+    parser.add_argument("--long", action='store_true', help="DO NOT discard longer baselines.")
     # SLURM configuratino options
     parser.add_argument("--partition", default="gpu", type=str, help="Setonix GPU partition where to submit the job")
     parser.add_argument("--account", default="pawsey1154", type=str, help="Setonix account billed for the job.")
     parser.add_argument("--time", type=str, default="24:00:00", help="Slurm job walltime.")
+    parser.add_argument("--nice", action='store_true', help="Pass the --nice option to SLURM to artificially lower the priority.")
 
     # parser.add_argument("--overlap")
     args = vars(parser.parse_args())
@@ -292,7 +336,7 @@ if __name__ == "__main__":
     # TODO: compute image size given pixsize
 
     metafits_file = f"{GLOBAL_CONFIG['data_path_prefix']}/{args['obsid']}/{args['obsid']}.metafits"
-    project, mode, pc_ra_deg, pc_dec_deg, n_antennas, flagged_antennas = get_info_from_metafits(metafits_file)
+    project, mode, pc_ra_deg, pc_dec_deg, n_antennas, flagged_antennas = get_info_from_metafits(metafits_file, not args['long'])
     #get_baseline_lengths(metafits_file)
     #exit(1)
     reorder = not mode == 'MWAX_VCS' 
@@ -347,7 +391,7 @@ if __name__ == "__main__":
                         offset, curr_duration, args["time_res"], args["freq_avg"], SEARCH_PARAMETERS['SMART']['oversampling'],
                         args["avg_images"], args["img_flag"], flagged_antennas, dm_range,
                         args["snr"], f"{img_size//2},{img_size//2}", args["partition"], args["account"], time_limit,
-                        args["dir_postfix"], args["file_postfix"], args["module"], args["dry_run"])
+                        args["dir_postfix"], args["file_postfix"], args["module"], args["dry_run"], args["nice"])
             
         # TODO: add estimate of cost in SU in printed summary
     else:
@@ -356,4 +400,4 @@ if __name__ == "__main__":
             args["offset"], args["duration"], args["time_res"], args["freq_avg"], args["oversampling"],
             args["avg_images"], args["img_flag"], flagged_antennas, args["dedisp"],
             args["snr"], args["dyspec"], args["partition"], args["account"], args["time"],
-            args["dir_postfix"], args["file_postfix"], args["module"], args["dry_run"])
+            args["dir_postfix"], args["file_postfix"], args["module"], args["dry_run"], args["nice"])
