@@ -3,10 +3,16 @@ from astropy.io import fits
 import argparse
 from itertools import product
 import os
+from math import sqrt
 
 # Script to tile an observation's FoV in smaller chunks
 # for processing with the BLINK pipeline.
+# The following is the maximum baseline length allowed in the MWAX SMART observations.
+MAX_BASELINE_LENGTH = 524.1177408273832
 
+# The following array was needed to manually flag antennas that contributed to long baselines.
+# Now these are automatically identified given the metafits file with the antenna information,
+# and a maximum baseline length. See the `Graph` class below for more info.
 SMART_ANTENNAS_OUTSIDE_CORE = [
     "LBF1",
     "LBF2",
@@ -35,115 +41,16 @@ SMART_ANTENNAS_OUTSIDE_CORE = [
 #    "Tile028",
 ]
 
-"""
-The following method identifies the minimal set of stations to be flagged such that
-all the long baselines are removed, long being an arbitrary threshold.
-
-1. Build a graph where each node is a station and there is an edge between two nodes
-if those nodes represent a long baseline.
-
-2. Sort nodes by number of edges.
-
-3. Iteratively flag the node/station with highest number of edges, until there are no edges 
-left in the graph between unflagged nodes.
-
-"""
-def build_graph(metafits_file):
-    hdus = fits.open(metafits_file)
-    ra = hdus[0].header['RA']
-    dec = hdus[0].header['DEC']
-    antenna_pos = []
-    for row in hdus[1].data:
-        if row['Tilename'] in SMART_ANTENNAS_OUTSIDE_CORE: continue
-        antenna_pos.append((row['Tilename'], row['East'], row['North'], row['Height']))
-    
-    n_ant = len(antenna_pos)
-    baseline_lengths = []
-    from math import sqrt
-
-    def comp_dist(a, b):
-        return sqrt((a[1] - b[1])**2 +  (a[2] - b[2])**2 +  (a[3] - b[3])**2)
-
-    for i in range(n_ant):
-        for j in range(0, i):
-            baseline_lengths.append((antenna_pos[i][0], antenna_pos[j][0], comp_dist(antenna_pos[i], antenna_pos[j])))
-    
-    sorted_lengths = sorted(baseline_lengths, key=lambda x: x[2])
-    for i, v in enumerate(sorted_lengths):
-        print(v)
-
-
-def get_baseline_lengths(metafits_file):
-    hdus = fits.open(metafits_file)
-    ra = hdus[0].header['RA']
-    dec = hdus[0].header['DEC']
-    antenna_pos = []
-    for row in hdus[1].data:
-        if row['Tilename'] in SMART_ANTENNAS_OUTSIDE_CORE: continue
-        antenna_pos.append((row['Tilename'], row['East'], row['North'], row['Height']))
-    
-    n_ant = len(antenna_pos)
-    baseline_lengths = []
-    from math import sqrt
-
-    def comp_dist(a, b):
-        return sqrt((a[1] - b[1])**2 +  (a[2] - b[2])**2 +  (a[3] - b[3])**2)
-
-    for i in range(n_ant):
-        for j in range(0, i):
-            baseline_lengths.append((antenna_pos[i][0], antenna_pos[j][0], comp_dist(antenna_pos[i], antenna_pos[j])))
-    
-    sorted_lengths = sorted(baseline_lengths, key=lambda x: x[2])
-    for i, v in enumerate(sorted_lengths):
-        print(v)
-
-
-def get_info_from_metafits(metafits_file, skip_long = True):
-    hdus = fits.open(metafits_file)
-    ra = hdus[0].header['RA']
-    dec = hdus[0].header['DEC']
-    outside_core = set()
-    for row in hdus[1].data:
-        if row['TILENAME'] in SMART_ANTENNAS_OUTSIDE_CORE:
-            outside_core.add(row['ANTENNA'])
-    flagged_antennas = set([row['ANTENNA'] for row in hdus[1].data if row['FLAG'] > 0])
-    if skip_long:
-        flagged_antennas = flagged_antennas.union(outside_core)
-    n_antennas = len(hdus[1].data) // 2
-    project = hdus[0].header['PROJECT']
-    mode = hdus[0].header['MODE']
-    return project, mode, ra, dec, n_antennas, flagged_antennas
-
-"""
-if ! [ -e $OUTPUT_DIR ]; then
-  mkdir -p $OUTPUT_DIR
-  # tells Lustre FS to only use the Flash pool (SSDs)
-  # lfs setstripe -p flash $OUTPUT_DIR
-fi
-"""
-
 GLOBAL_CONFIG = {
     "data_path_prefix" : f"/scratch/pawsey1154/{os.getenv('USER')}",
-    # TODO add default pixsizes for different types of observations
     "project_modulepath" : " /software/projects/pawsey1154/setonix/2025.08/modules/zen3/gcc/14.2.0",
     "user_modulepath" : f"/software/projects/pawsey1154/{os.getenv('USER')}/setonix/2025.08/modules/zen3/gcc/14.2.0"
 }
 
 SEARCH_PARAMETERS = {
-    'extended' : {
-        'imgsize' : 1024,
-        'dm_range' : [
-            '10:100:1',
-            '101:200:1',
-            '201:300:1',
-            '301:400:1',
-            '401:500:1',
-            '501:550:1',
-            '551:600:1'
-        ],
-        'duration' : 600,
-    },
-
+ 
+    # NOTE: This could actually be the search configuration for all the observations, after
+    # if the maximum baseline length is set to be the SMART one.
     'SMART' : {
         'oversampling' : 1,
         'imgsize' : 256,
@@ -165,10 +72,137 @@ SEARCH_PARAMETERS = {
             '501:550:1' : '13:00:00',
             '551:600:1': '13:00:00'
         },
+        # number of seconds to process for each job
         'duration' : 600,
-        'offsets' : [0, 1170, 2340, 3510, 4680], # allow 30 seconds overlap
+        # start points within the observation
+        # now automatically computed
+        # 'offsets' : [0, 1170, 2340, 3510, 4680], # allow 30 seconds overlap
     }
 }
+
+
+
+class Graph:
+    """
+    The following method identifies the minimal set of stations to be flagged such that
+    all the long baselines are removed, long being an arbitrary threshold.
+
+    1. Build a graph where each node is a station and there is an edge between two nodes
+    if those nodes represent a long baseline.
+
+    2. Sort nodes by number of edges.
+
+    3. Iteratively flag the node/station with highest number of edges, until there are no edges 
+    left in the graph between unflagged nodes.
+
+    However, it would be better to flag baselines in the imager. This is just a workaround.
+
+    """
+    def __init__(self):
+        self.data = {}
+    
+    def add_edge(self, x, y):
+        s1 : set = self.data.setdefault(x, set())
+        s1.add(y)
+        s2 : set = self.data.setdefault(y, set())
+        s2.add(x)
+
+
+    def reemove_largest_node(self):
+        vals = [(x, len(self.data[x])) for x in self.data]
+        max_node = max(vals, key= lambda x : x[1])
+        neighbours = self.data[max_node[0]]
+        del self.data[max_node[0]]
+        for n in neighbours:
+            self.data[n].remove(max_node[0])
+        return max_node
+
+
+def find_faraway_tiles(metafits_file, max_distance):
+    """
+    Find all the tiles that make the baseline distance above the maximum allowed.
+    """
+    hdus = fits.open(metafits_file)
+    antenna_pos = []
+    for row in hdus[1].data:
+        antenna_pos.append((row['Tilename'], row['East'], row['North'], row['Height']))
+    
+    n_ant = len(antenna_pos)
+
+    def comp_dist(a, b):
+        return sqrt((a[1] - b[1])**2 +  (a[2] - b[2])**2 +  (a[3] - b[3])**2)
+
+    G = Graph()
+
+    for i in range(n_ant):
+        for j in range(0, i):
+            dist = comp_dist(antenna_pos[i], antenna_pos[j])
+            if dist > max_distance:
+                G.add_edge(antenna_pos[i][0], antenna_pos[j][0])
+    
+    flagged_tiles = []
+    while True:
+        node_id, neigh_count = G.reemove_largest_node()
+        if neigh_count == 0: break
+        flagged_tiles.append(node_id)
+
+    return flagged_tiles
+
+
+
+def print_baseline_lengths(metafits_file):
+    """
+    Helper function just used for testing. Used to print list of baselines and associated length.
+    """
+    hdus = fits.open(metafits_file)
+    ra = hdus[0].header['RA']
+    dec = hdus[0].header['DEC']
+    antenna_pos = []
+    for row in hdus[1].data:
+        if row['Tilename'] in SMART_ANTENNAS_OUTSIDE_CORE: continue
+        antenna_pos.append((row['Antenna'], row['East'], row['North'], row['Height']))
+    
+    n_ant = len(antenna_pos)
+    baseline_lengths = []
+    from math import sqrt
+
+    def comp_dist(a, b):
+        return sqrt((a[1] - b[1])**2 +  (a[2] - b[2])**2 +  (a[3] - b[3])**2)
+
+    for i in range(n_ant):
+        for j in range(0, i):
+            baseline_lengths.append((antenna_pos[i][0], antenna_pos[j][0], comp_dist(antenna_pos[i], antenna_pos[j])))
+    
+    sorted_lengths = sorted(baseline_lengths, key=lambda x: x[2])
+    for i, v in enumerate(sorted_lengths):
+        print(v)
+
+
+
+def get_info_from_metafits(metafits_file, skip_long_baselines = True, maximum_baseline_length = MAX_BASELINE_LENGTH):
+    hdus = fits.open(metafits_file)
+    ra = hdus[0].header['RA']
+    dec = hdus[0].header['DEC']
+
+    # now get the antennas that were already flagged
+    flagged_antennas = set([row['ANTENNA'] for row in hdus[1].data if row['FLAG'] > 0])
+    if skip_long_baselines:
+        # must flag antennas that contribute to generate long baselines.
+        # This is a workaround, we should flag baselines in the gridding code in the imager.
+        if True: # Old method: exclude hardcoded tiles - which works but tedious.
+            outside_core = set()
+            for row in hdus[1].data:
+                if row['TILENAME'] in SMART_ANTENNAS_OUTSIDE_CORE:
+                    outside_core.add(row['ANTENNA'])
+        else:
+            # This is not working properly yet ...
+            outside_core = set(find_faraway_tiles(metafits_file, maximum_baseline_length))
+        flagged_antennas = flagged_antennas.union(outside_core)
+    n_antennas = len(hdus[1].data) // 2
+    project = hdus[0].header['PROJECT']
+    mode = hdus[0].header['MODE']
+    return project, mode, ra, dec, n_antennas, flagged_antennas
+
 
 # TODO set proper output log directory / policy
 # TODO print job cost prediction
@@ -326,19 +360,12 @@ if __name__ == "__main__":
     parser.add_argument("--time", type=str, default="24:00:00", help="Slurm job walltime.")
     parser.add_argument("--nice", action='store_true', help="Pass the --nice option to SLURM to artificially lower the priority.")
 
-    # parser.add_argument("--overlap")
     args = vars(parser.parse_args())
     
-    tile_size = args['tilesize']
-    img_size = args['imgsize']
-    pix_size_deg = args['pixsize']
-
-    # TODO: compute image size given pixsize
-
     metafits_file = f"{GLOBAL_CONFIG['data_path_prefix']}/{args['obsid']}/{args['obsid']}.metafits"
     project, mode, pc_ra_deg, pc_dec_deg, n_antennas, flagged_antennas = get_info_from_metafits(metafits_file, not args['long'])
-    #get_baseline_lengths(metafits_file)
-    #exit(1)
+    farway_tiles = find_faraway_tiles(metafits_file, MAX_BASELINE_LENGTH)
+    
     reorder = not mode == 'MWAX_VCS' 
 
     if args['no_flags']:
@@ -356,43 +383,41 @@ if __name__ == "__main__":
 
         dat_files = [x for x in os.listdir(combined_files_path) if x.endswith(".dat")]
         n_seconds = len(dat_files) // 24
-        print("N seconds is: ", n_seconds)
+        print("The observation's number of seconds is", n_seconds)
         duration = SEARCH_PARAMETERS['SMART']['duration']
         offsets = []
+        # TODO: compute overlap by DM
         overlap = 30
         i = 0
         while i < n_seconds:
             offsets.append(i)
             i += duration - overlap
         
-        if project == 'G0057':
-            dm_ranges =  SEARCH_PARAMETERS['SMART']['dm_range']
-            selected_time_bins = args["time_bins"]
-            selected_dm_bins = args["dm_bins"]
+        dm_ranges =  SEARCH_PARAMETERS['SMART']['dm_range']
+        selected_time_bins = args["time_bins"]
+        selected_dm_bins = args["dm_bins"]
 
-            if len(selected_time_bins) == 0:
-                selected_time_bins = list(range(len(offsets)))
-            if len(selected_dm_bins) == 0:
-                selected_dm_bins = list(range(len(dm_ranges)))
-            for j, dm_range in enumerate(dm_ranges):
-                if j not in selected_dm_bins: continue
-                for i, offset in enumerate(offsets):
-                    if i not in selected_time_bins: continue
-                    curr_duration = -1 if (i == len(offsets) - 1) else duration
-                    ioff = args["int_offset"]
-                    curr_duration -= ioff
-                    print(curr_duration)
-                    print(duration)
-                    offset += ioff
-                    img_size = SEARCH_PARAMETERS['SMART']['imgsize']
-                    time_limit = SEARCH_PARAMETERS['SMART']['dmrange_to_timelimit'][dm_range]
-                    submit_job(args["obsid"], n_antennas, img_size, pc_ra_deg, pc_dec_deg, 
-                        reorder,
-                        offset, curr_duration, args["time_res"], args["freq_avg"], SEARCH_PARAMETERS['SMART']['oversampling'],
-                        args["avg_images"], args["img_flag"], flagged_antennas, dm_range,
-                        args["snr"], f"{img_size//2},{img_size//2}", args["partition"], args["account"], time_limit,
-                        args["dir_postfix"], args["file_postfix"], args["module"], args["dry_run"], args["nice"])
-            
+        if len(selected_time_bins) == 0:
+            selected_time_bins = list(range(len(offsets)))
+        if len(selected_dm_bins) == 0:
+            selected_dm_bins = list(range(len(dm_ranges)))
+        for j, dm_range in enumerate(dm_ranges):
+            if j not in selected_dm_bins: continue
+            for i, offset in enumerate(offsets):
+                if i not in selected_time_bins: continue
+                curr_duration = -1 if (i == len(offsets) - 1) else duration
+                ioff = args["int_offset"]
+                curr_duration -= ioff
+                offset += ioff
+                img_size = SEARCH_PARAMETERS['SMART']['imgsize']
+                time_limit = SEARCH_PARAMETERS['SMART']['dmrange_to_timelimit'][dm_range]
+                submit_job(args["obsid"], n_antennas, img_size, pc_ra_deg, pc_dec_deg, 
+                    reorder,
+                    offset, curr_duration, args["time_res"], args["freq_avg"], SEARCH_PARAMETERS['SMART']['oversampling'],
+                    args["avg_images"], args["img_flag"], flagged_antennas, dm_range,
+                    args["snr"], f"{img_size//2},{img_size//2}", args["partition"], args["account"], time_limit,
+                    args["dir_postfix"], args["file_postfix"], args["module"], args["dry_run"], args["nice"])
+        
         # TODO: add estimate of cost in SU in printed summary
     else:
 
